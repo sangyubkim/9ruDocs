@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "9ruDocs",
+    "slug": "9rudocs",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nineru.docs",
+      "infoPlist": {
+        "NSCameraUsageDescription": "단계별 사진을 촬영합니다.",
+        "NSPhotoLibraryUsageDescription": "갤러리에서 사진을 선택합니다."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.nineru.docs",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "갤러리에서 단계 사진을 선택합니다.",
+          "cameraPermission": "카메라로 단계 사진을 촬영합니다."
+        }
+      ]
+    ]
+  }
+}

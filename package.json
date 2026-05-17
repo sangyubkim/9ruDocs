@@ -1,0 +1,17 @@
+{
+  "name": "9rudocs",
+  "private": true,
+  "scripts": {
+    "api": "node apps/api/server.mjs",
+    "api:win": "scripts\\start-api.bat",
+    "install:mobile": "npm install --prefix apps/mobile",
+    "mobile": "npm run start --prefix apps/mobile"
+  },
+  "dependencies": {
+    "expo": "^55.0.24"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.10",
+    "typescript": "~5.9.2"
+  }
+}
