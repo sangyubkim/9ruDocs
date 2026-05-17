@@ -68,7 +68,7 @@ export function HomeScreen({
         : await ImagePicker.launchImageLibraryAsync({
             quality: 0.8,
             allowsEditing: true,
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: ["images"],
           });
 
       if (result.canceled || !result.assets[0]?.uri) return;
