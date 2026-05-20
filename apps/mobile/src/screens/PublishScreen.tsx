@@ -68,7 +68,11 @@ export function PublishScreen({ draft, onBack }: Props) {
     <ScrollView style={styles.wrap} contentContainerStyle={styles.content}>
       <Text style={styles.title}>WordPress 등록</Text>
       <Text style={styles.meta}>
-        서버 `.env`의 WP_SITE_URL / WP_USERNAME / WP_APP_PASSWORD를 사용합니다.
+        설정(⚙)에 저장한 WordPress 자격 증명을 사용합니다. 앱에 없으면 서버
+        .env(WP_SITE_URL / WP_USERNAME / WP_APP_PASSWORD)로 대체됩니다.
+        {"\n"}
+        애플리케이션 비밀번호 사용을 권장하며, 저장된 값은 이 기기에만
+        보관됩니다.
       </Text>
 
       <View style={styles.summary}>

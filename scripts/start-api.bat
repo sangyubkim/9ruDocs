@@ -14,13 +14,21 @@ if not defined NODE (
   exit /b 1
 )
 
-REM Already running?
-"%NODE%" -e "fetch('http://127.0.0.1:3001/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))" 2>nul
-if %errorlevel%==0 (
-  echo API is already running: http://localhost:3001
-  echo Health: http://localhost:3001/health
-  exit /b 0
+echo Stopping any process on port 3001...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3001" ^| findstr "LISTENING"') do (
+  echo Killing PID %%a
+  taskkill /PID %%a /F >nul 2>&1
 )
+timeout /t 1 /nobreak >nul
 
-echo Starting API: http://localhost:3001
+echo.
+echo Starting 9ruDocs API: http://localhost:3001
+echo Available routes (see console after start):
+echo   GET  /health
+echo   GET  /
+echo   POST /blog/generate
+echo   POST /wordpress/publish
+echo   POST /wordpress/verify
+echo   POST /wordpress/media
+echo.
 "%NODE%" apps\api\server.mjs

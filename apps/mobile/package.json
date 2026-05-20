@@ -4,27 +4,43 @@
   "private": true,
   "main": "index.js",
   "scripts": {
+    "prestart": "node scripts/prestart-check.mjs",
+    "preandroid": "node scripts/prestart-check.mjs",
+    "preios": "node scripts/prestart-check.mjs",
     "start": "expo start",
     "android": "expo start --android",
-    "ios": "expo start --ios"
+    "ios": "expo start --ios",
+    "doctor": "npx expo-doctor@latest"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
-    "expo": "~55.0.24",
-    "expo-asset": "~55.0.17",
-    "expo-constants": "~55.0.16",
-    "expo-file-system": "~55.0.20",
-    "expo-font": "~55.0.7",
-    "expo-image-picker": "~55.0.20",
-    "expo-status-bar": "~55.0.6",
-    "react": "19.2.0",
-    "react-native": "0.83.6",
-    "react-native-safe-area-context": "~5.6.2"
+    "expo": "~54.0.34",
+    "expo-asset": "~12.0.13",
+    "expo-constants": "~18.0.13",
+    "expo-file-system": "~19.0.22",
+    "expo-font": "~14.0.11",
+    "expo-image-picker": "~17.0.11",
+    "expo-location": "~19.0.8",
+    "expo-speech-recognition": "^3.1.3",
+    "expo-status-bar": "~3.0.9",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-maps": "1.20.1",
+    "react-native-safe-area-context": "~5.6.0"
   },
   "devDependencies": {
     "@babel/core": "^7.26.10",
-    "@types/react": "~19.2.0",
-    "babel-preset-expo": "~55.0.0",
+    "@types/react": "~19.1.0",
+    "babel-preset-expo": "~54.0.10",
     "typescript": "~5.9.2"
+  },
+  "overrides": {
+    "expo": "~54.0.34",
+    "@expo/cli": "54.0.24",
+    "@expo/metro-config": "54.0.15",
+    "@expo/prebuild-config": "54.0.8",
+    "@expo/config": "12.0.13",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
   }
 }

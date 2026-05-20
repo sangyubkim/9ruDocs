@@ -14,7 +14,10 @@
       "bundleIdentifier": "com.nineru.docs",
       "infoPlist": {
         "NSCameraUsageDescription": "단계별 사진을 촬영합니다.",
-        "NSPhotoLibraryUsageDescription": "갤러리에서 사진을 선택합니다."
+        "NSPhotoLibraryUsageDescription": "갤러리에서 사진을 선택합니다.",
+        "NSLocationWhenInUseUsageDescription": "단계별 현재 위치를 기록합니다.",
+        "NSMicrophoneUsageDescription": "음성으로 글 내용을 입력합니다.",
+        "NSSpeechRecognitionUsageDescription": "음성을 텍스트로 변환합니다."
       }
     },
     "android": {
@@ -22,10 +25,14 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.nineru.docs",
+      "usesCleartextTraffic": true,
       "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "plugins": [
@@ -35,7 +42,18 @@
           "photosPermission": "갤러리에서 단계 사진을 선택합니다.",
           "cameraPermission": "카메라로 단계 사진을 촬영합니다."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "단계별 현재 위치를 기록합니다."
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "4052435f-32ed-468f-9dd1-94d72dbaacf3"
+      }
+    }
   }
 }

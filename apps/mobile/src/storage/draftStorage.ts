@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { BlogDraft, Step } from "../types";
+import type { BlogDraft, Step, StepStatus } from "../types";
 
 const KEY = "@9rudocs/draft";
 
@@ -7,6 +7,27 @@ function isValidDraft(data: unknown): data is BlogDraft {
   if (!data || typeof data !== "object") return false;
   const d = data as BlogDraft;
   return Array.isArray(d.steps) && typeof d.id === "string";
+}
+
+function normalizeStatus(status: unknown): StepStatus {
+  return status === "completed" ? "completed" : "editing";
+}
+
+export function normalizeStep(step: Step): Step {
+  return {
+    ...step,
+    status: normalizeStatus(step.status),
+    location: step.location ?? null,
+  };
+}
+
+function normalizeDraft(draft: BlogDraft): BlogDraft {
+  return {
+    ...draft,
+    steps: draft.steps.map((s, i) =>
+      normalizeStep({ ...s, order: typeof s.order === "number" ? s.order : i }),
+    ),
+  };
 }
 
 export async function loadDraft(): Promise<BlogDraft | null> {
@@ -18,7 +39,7 @@ export async function loadDraft(): Promise<BlogDraft | null> {
       await AsyncStorage.removeItem(KEY);
       return null;
     }
-    return parsed;
+    return normalizeDraft(parsed);
   } catch {
     await AsyncStorage.removeItem(KEY);
     return null;
@@ -38,6 +59,8 @@ export function createEmptyDraft(): BlogDraft {
     body: "",
     excerpt: "",
     tags: [],
+    tone: "friendly",
+    ai: {},
     createdAt: now,
     updatedAt: now,
   };
@@ -49,5 +72,7 @@ export function createStep(order: number): Step {
     imageUri: null,
     caption: "",
     order,
+    status: "editing",
+    location: null,
   };
 }

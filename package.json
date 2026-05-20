@@ -4,14 +4,14 @@
   "scripts": {
     "api": "node apps/api/server.mjs",
     "api:win": "scripts\\start-api.bat",
+    "api:restart": "scripts\\restart-api.bat",
+    "api:test-verify": "node apps/api/scripts/test-wordpress-verify.mjs",
+    "api:test-blog": "node apps/api/scripts/test-blog-generate.mjs",
+    "clean:root-expo": "node scripts/clean-root-expo.mjs",
     "install:mobile": "npm install --prefix apps/mobile",
-    "mobile": "npm run start --prefix apps/mobile"
-  },
-  "dependencies": {
-    "expo": "^55.0.24"
-  },
-  "devDependencies": {
-    "@types/react": "~19.2.10",
-    "typescript": "~5.9.2"
+    "premobile": "node scripts/clean-root-expo.mjs",
+    "mobile": "npm run start --prefix apps/mobile",
+    "mobile:doctor": "npm run doctor --prefix apps/mobile",
+    "mobile:test-geocode": "node apps/mobile/scripts/test-geocode.mjs"
   }
 }

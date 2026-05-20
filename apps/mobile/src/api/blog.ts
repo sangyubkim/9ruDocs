@@ -1,8 +1,29 @@
-import { apiFetch } from "./client";
+import {
+  apiFetch,
+  formatApiConnectionError,
+  isApiConnectionError,
+} from "./client";
+
+export type GenerateStepLocation = {
+  label: string;
+  latitude?: number;
+  longitude?: number;
+  mapsUrl: string;
+};
 
 export type GenerateRequest = {
-  steps: { caption: string; order: number }[];
+  steps: {
+    caption: string;
+    order: number;
+    location?: GenerateStepLocation | null;
+  }[];
   tone?: "friendly" | "professional";
+  persona?: string;
+  target?: string;
+  keywords?: string;
+  toneLabel?: string;
+  personalTips?: string;
+  cta?: string;
 };
 
 export type GenerateResponse = {
@@ -25,4 +46,10 @@ export async function generateBlog(
     throw new Error(json.error ?? `Generate failed: ${res.status}`);
   }
   return json;
+}
+
+/** fetch 실패 시 사용자에게 보여줄 메시지 */
+export function formatNetworkError(e: unknown): string {
+  if (isApiConnectionError(e)) return e.message;
+  return formatApiConnectionError(e);
 }

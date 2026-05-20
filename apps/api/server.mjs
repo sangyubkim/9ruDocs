@@ -4,14 +4,27 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readBody, matchRoute } from "./lib/http-util.mjs";
 import { generateBlogPost } from "./lib/blog-generate.mjs";
-import { publishToWordPress, uploadMedia } from "./lib/wordpress.mjs";
+import {
+  publishToWordPress,
+  uploadMedia,
+  verifyWordPressCredentials,
+} from "./lib/wordpress.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 loadEnv(join(__dirname, ".env"));
 
+const API_ROUTES = [
+  "GET /health",
+  "GET /",
+  "POST /blog/generate",
+  "POST /wordpress/publish",
+  "POST /wordpress/verify",
+  "POST /wordpress/media",
+];
+
 const env = {
   port: Number(process.env.PORT ?? 3001),
-  corsOrigins: (process.env.CORS_ORIGIN ?? "http://localhost:8081")
+  corsOrigins: (process.env.CORS_ORIGIN ?? "http://localhost:8081,*")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean),
@@ -85,12 +98,7 @@ async function handle(req, res) {
         200,
         {
           name: "9ruDocs API",
-          routes: [
-            "GET /health",
-            "POST /blog/generate",
-            "POST /wordpress/publish",
-            "POST /wordpress/media",
-          ],
+          routes: API_ROUTES.filter((r) => r !== "GET /"),
         },
         origin,
       );
@@ -111,6 +119,13 @@ async function handle(req, res) {
       return;
     }
 
+    if (matchRoute(url, method, "/wordpress/verify", "POST")) {
+      const body = await readBody(req);
+      const result = await verifyWordPressCredentials(body, env);
+      send(res, 200, result, origin);
+      return;
+    }
+
     if (matchRoute(url, method, "/wordpress/media", "POST")) {
       const body = await readBody(req);
       const siteUrl = body?.siteUrl?.trim() || env.wpSiteUrl;
@@ -125,7 +140,17 @@ async function handle(req, res) {
       return;
     }
 
-    send(res, 404, { error: "Not found" }, origin);
+    send(
+      res,
+      404,
+      {
+        code: "route_not_found",
+        error: "요청한 API 경로를 찾을 수 없습니다.",
+        hint:
+          "GET / 로 사용 가능한 경로를 확인하고, PC에서 scripts\\start-api.bat 으로 API를 최신 코드로 재시작하세요.",
+      },
+      origin,
+    );
   } catch (e) {
     const message = e instanceof Error ? e.message : "Server error";
     send(res, 400, { error: message }, origin);
@@ -138,6 +163,10 @@ const server = http.createServer((req, res) => {
 
 server.listen(env.port, () => {
   console.log(`API http://localhost:${env.port}`);
+  console.log("Routes:");
+  for (const route of API_ROUTES) {
+    console.log(`  ${route}`);
+  }
   console.log(`OpenAI: ${env.openaiApiKey ? "configured" : "fallback mode"}`);
   console.log(`WordPress: ${env.wpSiteUrl ? "configured" : "not configured"}`);
   console.log(`CORS: ${env.corsOrigins.join(", ")}`);

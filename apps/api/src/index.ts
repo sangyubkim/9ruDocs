@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 const port = Number(process.env.PORT ?? 3001);
-const corsOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:8081")
+const corsOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:8081,*")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
@@ -14,7 +14,11 @@ const app = new Hono();
 app.use(
   "*",
   cors({
-    origin: corsOrigins,
+    origin: (origin) => {
+      if (!origin) return "*";
+      if (corsOrigins.includes("*")) return origin;
+      return corsOrigins.includes(origin) ? origin : null;
+    },
     allowMethods: ["GET", "POST", "PUT", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
   }),
