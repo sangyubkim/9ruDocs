@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readBody, matchRoute } from "./lib/http-util.mjs";
 import { generateBlogPost } from "./lib/blog-generate.mjs";
+import { importRestaurantBlog } from "./lib/restaurant-import.mjs";
+import { generateRestaurantBlog } from "./lib/restaurant-generate.mjs";
 import {
   publishToWordPress,
   uploadMedia,
@@ -17,6 +19,8 @@ const API_ROUTES = [
   "GET /health",
   "GET /",
   "POST /blog/generate",
+  "POST /blog/restaurant-import",
+  "POST /blog/restaurant-generate",
   "POST /wordpress/publish",
   "POST /wordpress/verify",
   "POST /wordpress/media",
@@ -31,6 +35,8 @@ const env = {
   openaiApiKey: process.env.OPENAI_API_KEY?.trim() ?? "",
   openaiBaseUrl: process.env.OPENAI_BASE_URL?.trim() ?? "https://api.openai.com/v1",
   openaiModel: process.env.OPENAI_MODEL?.trim() ?? "gpt-4o-mini",
+  naverClientId: process.env.NAVER_CLIENT_ID?.trim() ?? "",
+  naverClientSecret: process.env.NAVER_CLIENT_SECRET?.trim() ?? "",
   wpSiteUrl: process.env.WP_SITE_URL?.trim() ?? "",
   wpUsername: process.env.WP_USERNAME?.trim() ?? "",
   wpAppPassword: process.env.WP_APP_PASSWORD?.trim() ?? "",
@@ -108,6 +114,20 @@ async function handle(req, res) {
     if (matchRoute(url, method, "/blog/generate", "POST")) {
       const body = await readBody(req);
       const result = await generateBlogPost(body, env);
+      send(res, 200, result, origin);
+      return;
+    }
+
+    if (matchRoute(url, method, "/blog/restaurant-import", "POST")) {
+      const body = await readBody(req);
+      const result = await importRestaurantBlog(body, env);
+      send(res, 200, result, origin);
+      return;
+    }
+
+    if (matchRoute(url, method, "/blog/restaurant-generate", "POST")) {
+      const body = await readBody(req);
+      const result = await generateRestaurantBlog(body, env);
       send(res, 200, result, origin);
       return;
     }

@@ -14,7 +14,8 @@
       "bundleIdentifier": "com.nineru.docs",
       "infoPlist": {
         "NSCameraUsageDescription": "단계별 사진을 촬영합니다.",
-        "NSPhotoLibraryUsageDescription": "갤러리에서 사진을 선택합니다.",
+        "NSPhotoLibraryUsageDescription": "갤러리에서 사진을 선택하고 촬영 사진을 저장합니다.",
+        "NSPhotoLibraryAddUsageDescription": "카메라로 촬영한 사진을 갤러리에 저장합니다.",
         "NSLocationWhenInUseUsageDescription": "단계별 현재 위치를 기록합니다.",
         "NSMicrophoneUsageDescription": "음성으로 글 내용을 입력합니다.",
         "NSSpeechRecognitionUsageDescription": "음성을 텍스트로 변환합니다."
@@ -28,6 +29,7 @@
       "usesCleartextTraffic": true,
       "permissions": [
         "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.ACCESS_FINE_LOCATION",
@@ -41,6 +43,14 @@
         {
           "photosPermission": "갤러리에서 단계 사진을 선택합니다.",
           "cameraPermission": "카메라로 단계 사진을 촬영합니다."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "촬영한 사진을 갤러리에 저장합니다.",
+          "savePhotosPermission": "촬영한 사진을 갤러리에 저장합니다.",
+          "isAccessMediaLocationEnabled": false
         }
       ],
       [

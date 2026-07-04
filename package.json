@@ -2,6 +2,8 @@
   "name": "9rudocs",
   "private": true,
   "scripts": {
+    "start": "npm run mobile",
+    "expo": "echo [오류] 루트에서 expo 실행 금지. npm run mobile 또는 expo-mobile.bat 사용 && exit 1",
     "api": "node apps/api/server.mjs",
     "api:win": "scripts\\start-api.bat",
     "api:restart": "scripts\\restart-api.bat",

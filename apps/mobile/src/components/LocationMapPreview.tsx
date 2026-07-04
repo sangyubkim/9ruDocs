@@ -20,7 +20,7 @@ import {
 
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
-import type { StepLocation } from "../types";
+import type { MapProvider, StepLocation } from "../types";
 
 import { MapViewErrorBoundary } from "./MapViewErrorBoundary";
 
@@ -33,6 +33,10 @@ import {
   isValidCoords,
 
   openGoogleMaps,
+
+  openExternalMaps,
+
+  mapsProviderLabel,
 
 } from "../utils/maps";
 
@@ -47,20 +51,26 @@ import {
 
 
 type Props = {
-
   location: StepLocation;
-
+  /** 구글/네이버 외부 지도 앱 연동 */
+  mapService?: MapProvider;
+  compact?: boolean;
 };
 
 
 
-const MAP_HEIGHT = 168;
-
+const MAP_HEIGHT_DEFAULT = 168;
+const MAP_HEIGHT_COMPACT = 120;
 const MAP_LOAD_TIMEOUT_MS = 15_000;
 
 
 
-export function LocationMapPreview({ location }: Props) {
+export function LocationMapPreview({
+  location,
+  mapService = "google",
+  compact = false,
+}: Props) {
+  const mapHeight = compact ? MAP_HEIGHT_COMPACT : MAP_HEIGHT_DEFAULT;
 
   const tryNativeMap = canUseNativeMapView();
 
@@ -258,7 +268,7 @@ export function LocationMapPreview({ location }: Props) {
 
 
 
-  const openMaps = () => void openGoogleMaps(location);
+  const openMaps = () => void openExternalMaps(location, mapService);
 
   const showFallbackPanel =
 
@@ -266,7 +276,7 @@ export function LocationMapPreview({ location }: Props) {
 
 
 
-  const mapProvider =
+  const nativeMapProvider =
 
     Platform.OS === "android" ? PROVIDER_GOOGLE : undefined;
 
@@ -321,13 +331,9 @@ export function LocationMapPreview({ location }: Props) {
 
 
       <Pressable
-
-        style={styles.mapBox}
-
+        style={[styles.mapBox, { height: mapHeight }]}
         onPress={openMaps}
-
         accessibilityRole="button"
-
       >
 
         {showMapLoading ? (
@@ -349,10 +355,8 @@ export function LocationMapPreview({ location }: Props) {
           <MapViewErrorBoundary onError={() => setMapFailed(true)}>
 
             <MapView
-
-              style={styles.map}
-
-              provider={mapProvider}
+              style={[styles.map, { height: mapHeight }]}
+              provider={nativeMapProvider}
 
               initialRegion={region}
 
@@ -383,10 +387,8 @@ export function LocationMapPreview({ location }: Props) {
         ) : imageUri ? (
 
           <Image
-
             source={{ uri: imageUri }}
-
-            style={styles.map}
+            style={[styles.map, { height: mapHeight }]}
 
             resizeMode="cover"
 
@@ -398,7 +400,7 @@ export function LocationMapPreview({ location }: Props) {
 
         ) : showFallbackPanel ? (
 
-          <View style={styles.noMap}>
+          <View style={[styles.noMap, { height: mapHeight }]}>
 
             <Text style={styles.noMapIcon}>🗺️</Text>
 
@@ -428,7 +430,7 @@ export function LocationMapPreview({ location }: Props) {
 
         ) : (
 
-          <View style={styles.noMap}>
+          <View style={[styles.noMap, { height: mapHeight }]}>
 
             <Text style={styles.noMapIcon}>🗺️</Text>
 
@@ -448,7 +450,9 @@ export function LocationMapPreview({ location }: Props) {
 
       <Pressable style={styles.mapsBtn} onPress={openMaps}>
 
-        <Text style={styles.mapsBtnText}>구글 지도에서 열기</Text>
+        <Text style={styles.mapsBtnText}>
+          {mapsProviderLabel(mapService)}에서 열기
+        </Text>
 
       </Pressable>
 
@@ -503,20 +507,12 @@ const styles = StyleSheet.create({
   coordsInline: { marginTop: 3, fontSize: 12, color: "#475569" },
 
   mapBox: {
-
-    height: MAP_HEIGHT,
-
     marginHorizontal: 10,
-
     borderRadius: 10,
-
     overflow: "hidden",
-
     backgroundColor: "#dbeafe",
-
   },
-
-  map: { width: "100%", height: MAP_HEIGHT },
+  map: { width: "100%" },
 
   loading: {
 
@@ -535,17 +531,10 @@ const styles = StyleSheet.create({
   loadingText: { marginTop: 8, fontSize: 12, color: "#475569" },
 
   noMap: {
-
     flex: 1,
-
-    height: MAP_HEIGHT,
-
     alignItems: "center",
-
     justifyContent: "center",
-
     paddingHorizontal: 16,
-
   },
 
   noMapIcon: { fontSize: 32, marginBottom: 6 },

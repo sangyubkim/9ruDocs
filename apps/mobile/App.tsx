@@ -10,7 +10,9 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import { formatNetworkError, generateBlog } from "./src/api/blog";
+import { generateRestaurantBlog } from "./src/api/restaurant";
 import { setApiClientBaseUrl } from "./src/api/client";
+import { DraftDrawer } from "./src/components/DraftDrawer";
 import { ErrorBoundary } from "./src/components/ErrorBoundary";
 import { ApiProvider, useApi } from "./src/context/ApiContext";
 import {
@@ -18,25 +20,39 @@ import {
   wasApiSetupPromptShown,
 } from "./src/storage/settingsStorage";
 import {
+  addNewDraftToState,
   createEmptyDraft,
-  loadDraft,
-  saveDraft,
+  getActiveDraft,
+  loadDraftState,
+  removeDraftsFromState,
+  saveDraftState,
+  switchActiveDraft,
+  upsertDraftInState,
 } from "./src/storage/draftStorage";
-import type { BlogDraft, Screen } from "./src/types";
+import { restaurantToMarkdown, normalizeRestaurantData, createEmptyRestaurantData } from "./src/utils/restaurantTemplate";
+import type { BlogDraft, DraftListState, Screen } from "./src/types";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { EditScreen } from "./src/screens/EditScreen";
 import { BlogPreviewScreen } from "./src/screens/BlogPreviewScreen";
 import { PublishScreen } from "./src/screens/PublishScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
+import { RestaurantTemplateScreen } from "./src/screens/RestaurantTemplateScreen";
 
 function AppInner() {
   const { apiBaseUrl, apiUrlNeedsSetup } = useApi();
   const [screen, setScreen] = useState<Screen>("home");
   const [showSettings, setShowSettings] = useState(false);
-  const [draft, setDraft] = useState<BlogDraft>(createEmptyDraft());
+  const [draftState, setDraftState] = useState<DraftListState>(() => {
+    const initial = createEmptyDraft();
+    return { drafts: [initial], activeId: initial.id };
+  });
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+
+  const draft = getActiveDraft(draftState);
 
   useEffect(() => {
     setApiClientBaseUrl(apiBaseUrl);
@@ -65,8 +81,8 @@ function AppInner() {
   useEffect(() => {
     void (async () => {
       try {
-        const saved = await loadDraft();
-        if (saved) setDraft(saved);
+        const saved = await loadDraftState();
+        setDraftState(saved);
       } catch (e) {
         setBootError(e instanceof Error ? e.message : "초기화 실패");
       } finally {
@@ -75,9 +91,24 @@ function AppInner() {
     })();
   }, []);
 
+  const persistState = useCallback(async (next: DraftListState) => {
+    setDraftState(next);
+    await saveDraftState(next);
+  }, []);
+
   const updateDraft = useCallback(async (next: BlogDraft) => {
-    setDraft(next);
-    await saveDraft(next);
+    const normalized =
+      next.template === "restaurant" && next.restaurant
+        ? {
+            ...next,
+            body: next.body || restaurantToMarkdown(next.restaurant),
+          }
+        : next;
+    setDraftState((prev) => {
+      const updated = upsertDraftInState(prev, normalized);
+      void saveDraftState(updated);
+      return updated;
+    });
   }, []);
 
   const handleGenerate = useCallback(async () => {
@@ -136,8 +167,105 @@ function AppInner() {
     }
   }, [draft, updateDraft, apiUrlNeedsSetup]);
 
+  const handleRestaurantGenerate = useCallback(async () => {
+    const restaurant = normalizeRestaurantData(
+      draft.restaurant ?? createEmptyRestaurantData(),
+    );
+    const hasInput =
+      restaurant.restaurantName.trim().length > 0 ||
+      restaurant.sections.some((s) => s.content.trim().length > 10);
+
+    if (!hasInput) {
+      Alert.alert("입력 필요", "맛집명 또는 섹션 내용을 먼저 입력해 주세요.");
+      return;
+    }
+    if (apiUrlNeedsSetup) {
+      Alert.alert(
+        "PC API 주소 설정 필요",
+        "⚙ 설정에서 PC API 주소를 입력한 뒤 AI 글쓰기를 사용해 주세요.",
+        [
+          { text: "취소", style: "cancel" },
+          { text: "설정 열기", onPress: () => setShowSettings(true) },
+        ],
+      );
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      const result = await generateRestaurantBlog({
+        restaurant,
+        tone: draft.tone ?? "friendly",
+      });
+      const next: BlogDraft = {
+        ...draft,
+        title: result.title,
+        body: result.body,
+        excerpt: result.excerpt,
+        tags: result.suggestedTags ?? [],
+        restaurant,
+        updatedAt: new Date().toISOString(),
+      };
+      await updateDraft(next);
+      setScreen("edit");
+    } catch (e) {
+      Alert.alert("AI 생성 실패", formatNetworkError(e));
+    } finally {
+      setGenerating(false);
+    }
+  }, [draft, updateDraft, apiUrlNeedsSetup]);
+
+  const handleSelectDraft = useCallback(
+    async (id: string) => {
+      const next = switchActiveDraft(draftState, id);
+      await persistState(next);
+      setScreen("home");
+    },
+    [draftState, persistState],
+  );
+
+  const handleToggleCheck = useCallback((id: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleDeleteChecked = useCallback(() => {
+    if (checkedIds.size === 0) return;
+    Alert.alert(
+      "글 삭제",
+      `선택한 ${checkedIds.size}개의 글을 삭제할까요?`,
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Yes",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              const next = removeDraftsFromState(draftState, checkedIds);
+              await persistState(next);
+              setCheckedIds(new Set());
+              setScreen("home");
+            })();
+          },
+        },
+      ],
+    );
+  }, [checkedIds, draftState, persistState]);
+
+  const handleNewDraft = useCallback(async () => {
+    const next = addNewDraftToState(draftState);
+    await persistState(next);
+    setCheckedIds(new Set());
+    setScreen("home");
+    setDrawerOpen(false);
+  }, [draftState, persistState]);
+
   const titles: Record<Screen, string> = {
-    home: "단계 작성",
+    home: draft.template === "restaurant" ? "맛집 작성" : "단계 작성",
     edit: "글 편집",
     preview: "미리보기",
     publish: "WordPress",
@@ -191,35 +319,75 @@ function AppInner() {
         <SettingsScreen onClose={() => setShowSettings(false)} />
       ) : null}
 
-      {screen === "home" && (
-        <HomeScreen
-          draft={draft}
-          loading={loading}
-          generating={generating}
-          onChangeDraft={(d) => void updateDraft(d)}
-          onGenerate={() => void handleGenerate()}
-          onOpenPublish={() => setScreen(draft.body ? "publish" : "edit")}
-        />
-      )}
-      {screen === "edit" && (
-        <EditScreen
-          draft={draft}
-          onChangeDraft={(d) => void updateDraft(d)}
-          onBack={() => setScreen("home")}
-          onPreview={() => setScreen("preview")}
-          onPublish={() => setScreen("publish")}
-        />
-      )}
-      {screen === "preview" && (
-        <BlogPreviewScreen
-          draft={draft}
-          onEdit={() => setScreen("edit")}
-          onPublish={() => setScreen("publish")}
-        />
-      )}
-      {screen === "publish" && (
-        <PublishScreen draft={draft} onBack={() => setScreen("edit")} />
-      )}
+      <View style={styles.main}>
+        <DraftDrawer
+          drafts={draftState.drafts}
+          activeId={draftState.activeId}
+          checkedIds={checkedIds}
+          onSelectDraft={(id) => void handleSelectDraft(id)}
+          onToggleCheck={handleToggleCheck}
+          onDeleteChecked={handleDeleteChecked}
+          onNewDraft={() => void handleNewDraft()}
+        >
+        {screen === "home" && draft.template === "restaurant" && (
+          <RestaurantTemplateScreen
+            draft={draft}
+            importing={importing}
+            generating={generating}
+            apiUrlNeedsSetup={apiUrlNeedsSetup}
+            onChangeDraft={(d) => void updateDraft(d)}
+            onImportStart={() => setImporting(true)}
+            onImportEnd={() => setImporting(false)}
+            onGenerate={() => void handleRestaurantGenerate()}
+            onOpenSettings={() => setShowSettings(true)}
+            onPreview={() => setScreen("preview")}
+            onPublish={() => setScreen("publish")}
+          />
+        )}
+
+        {screen === "home" && draft.template === "basic" && (
+          <HomeScreen
+            draft={draft}
+            loading={loading}
+            generating={generating}
+            onChangeDraft={(d) => void updateDraft(d)}
+            onGenerate={() => void handleGenerate()}
+            onOpenPublish={() => setScreen(draft.body ? "publish" : "edit")}
+          />
+        )}
+
+        {screen === "edit" && (
+          <EditScreen
+            draft={draft}
+            onChangeDraft={(d) => void updateDraft(d)}
+            onBack={() => setScreen("home")}
+            onPreview={() => setScreen("preview")}
+            onPublish={() => setScreen("publish")}
+          />
+        )}
+        {screen === "preview" && (
+          <BlogPreviewScreen
+            draft={draft}
+            onEdit={() => setScreen("edit")}
+            onPublish={() => setScreen("publish")}
+          />
+        )}
+        {screen === "publish" && (
+          <PublishScreen
+            draft={draft}
+            onBack={() =>
+              setScreen(
+                draft.template === "restaurant"
+                  ? draft.body
+                    ? "preview"
+                    : "home"
+                  : "edit",
+              )
+            }
+          />
+        )}
+        </DraftDrawer>
+      </View>
     </SafeAreaView>
   );
 }
@@ -262,4 +430,5 @@ const styles = StyleSheet.create({
   },
   apiBannerText: { fontSize: 13, fontWeight: "600", color: "#92400e" },
   bootErr: { color: "#b91c1c", padding: 16, fontSize: 16 },
+  main: { flex: 1, position: "relative" },
 });

@@ -10,11 +10,13 @@ import {
   TextInput,
   View,
 } from "react-native";
-import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BlogDraft, Step, StepLocation } from "../types";
 import { createStep } from "../storage/draftStorage";
+import { createEmptyRestaurantData } from "../utils/restaurantTemplate";
+import { pickImage as pickImageUtil } from "../utils/imagePicker";
+import { TemplatePicker } from "../components/TemplatePicker";
 import { VoiceInputButton } from "../components/VoiceInputButton";
 import { LocationMapPreview } from "../components/LocationMapPreview";
 import {
@@ -43,6 +45,7 @@ export function HomeScreen({
   const [placeDrafts, setPlaceDrafts] = useState<Record<string, string>>({});
   const [geocodingStepId, setGeocodingStepId] = useState<string | null>(null);
   const [locatingStepId, setLocatingStepId] = useState<string | null>(null);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const locatingRef = useRef(false);
   const sorted = [...draft.steps].sort((a, b) => a.order - b.order);
 
@@ -71,35 +74,11 @@ export function HomeScreen({
       const step = draft.steps.find((s) => s.id === stepId);
       if (step?.status === "completed") return;
 
-      if (useCamera) {
-        const cam = await ImagePicker.requestCameraPermissionsAsync();
-        if (!cam.granted) {
-          Alert.alert("권한 필요", "카메라 권한을 허용해 주세요.");
-          return;
-        }
-      } else {
-        const lib = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!lib.granted) {
-          Alert.alert("권한 필요", "갤러리 권한을 허용해 주세요.");
-          return;
-        }
-      }
-
-      const result = useCamera
-        ? await ImagePicker.launchCameraAsync({
-            quality: 0.8,
-            allowsEditing: true,
-          })
-        : await ImagePicker.launchImageLibraryAsync({
-            quality: 0.8,
-            allowsEditing: true,
-            mediaTypes: ["images"],
-          });
-
-      if (result.canceled || !result.assets[0]?.uri) return;
+      const uri = await pickImageUtil(useCamera);
+      if (!uri) return;
 
       const steps = draft.steps.map((s) =>
-        s.id === stepId ? { ...s, imageUri: result.assets[0].uri } : s,
+        s.id === stepId ? { ...s, imageUri: uri } : s,
       );
       persist(steps);
     },
@@ -258,6 +237,13 @@ export function HomeScreen({
 
   return (
     <View style={styles.wrap}>
+      <Pressable
+        style={styles.templateBtn}
+        onPress={() => setShowTemplatePicker(true)}
+      >
+        <Text style={styles.templateBtnText}>템플릿 선택 (기본)</Text>
+      </Pressable>
+
       <Text style={styles.hint}>
         단계별 사진·설명·위치를 추가한 뒤 작성완료로 잠그고 AI 글쓰기를 누르세요.
       </Text>
@@ -445,12 +431,38 @@ export function HomeScreen({
           </Pressable>
         ) : null}
       </View>
+
+      <TemplatePicker
+        visible={showTemplatePicker}
+        current="basic"
+        onSelect={(template) => {
+          if (template === "restaurant") {
+            onChangeDraft({
+              ...draft,
+              template: "restaurant",
+              restaurant: draft.restaurant ?? createEmptyRestaurantData(),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        }}
+        onClose={() => setShowTemplatePicker(false)}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { flex: 1 },
+  templateBtn: {
+    alignSelf: "flex-end",
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#2563eb",
+    borderRadius: 8,
+  },
+  templateBtnText: { color: "#2563eb", fontWeight: "700", fontSize: 13 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   hint: { fontSize: 14, color: "#64748b", marginBottom: 12 },
   row: { flexDirection: "row", gap: 8, marginBottom: 12 },

@@ -8,6 +8,8 @@ import {
 } from "react-native";
 import { LocationMapPreview } from "../components/LocationMapPreview";
 import type { BlogDraft, Step } from "../types";
+import { normalizeRestaurantData } from "../utils/restaurantTemplate";
+import { locationFromPlaceName } from "../utils/maps";
 import { MarkdownPreviewBody } from "../utils/markdownPreview";
 
 type Props = {
@@ -27,6 +29,27 @@ export function BlogPreviewScreen({ draft, onEdit, onPublish }: Props) {
   const stepsWithLocation = steps.filter(
     (s) => s.location?.label || s.location?.mapsUrl,
   );
+
+  const restaurant =
+    draft.template === "restaurant" && draft.restaurant
+      ? normalizeRestaurantData(draft.restaurant)
+      : null;
+  const restaurantLocation =
+    restaurant?.location ??
+    (restaurant?.basicInfo.address.trim()
+      ? locationFromPlaceName(
+          [restaurant.basicInfo.name, restaurant.basicInfo.address]
+            .filter(Boolean)
+            .join(" "),
+          restaurant.mapProvider,
+        )
+      : null);
+  const showRestaurantMap =
+    draft.template === "restaurant" &&
+    restaurantLocation &&
+    (restaurantLocation.mapsUrl ||
+      restaurantLocation.label ||
+      restaurantLocation.latitude != null);
 
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={styles.content}>
@@ -60,11 +83,25 @@ export function BlogPreviewScreen({ draft, onEdit, onPublish }: Props) {
         </View>
       ) : null}
 
+      {showRestaurantMap && restaurant ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>가게 위치</Text>
+          <Text style={styles.sectionHint}>
+            {restaurant.basicInfo.address.trim() || restaurantLocation!.label}
+          </Text>
+          <LocationMapPreview
+            location={restaurantLocation!}
+            mapService={restaurant.mapProvider}
+            compact
+          />
+        </View>
+      ) : null}
+
       <View style={styles.divider} />
 
       <MarkdownPreviewBody body={draft.body} />
 
-      {stepsWithLocation.length > 0 ? (
+      {stepsWithLocation.length > 0 && draft.template !== "restaurant" ? (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>방문 장소</Text>
           <Text style={styles.sectionHint}>
