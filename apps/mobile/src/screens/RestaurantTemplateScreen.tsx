@@ -1,7 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +15,7 @@ import {
 } from "react-native";
 import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { pickImage } from "../utils/imagePicker";
 import type {
   BlogDraft,
   MapProvider,
@@ -22,10 +27,11 @@ import { LocationMapPreview } from "../components/LocationMapPreview";
 import { MapProviderRadio } from "../components/MapProviderRadio";
 import { SectionInputCard } from "../components/SectionInputCard";
 import { RestaurantSummaryCard } from "../components/RestaurantSummaryCard";
+import { PrefixedFieldInput } from "../components/PrefixedFieldInput";
+import { BlogImportModal } from "../components/BlogImportModal";
 import { TemplatePicker } from "../components/TemplatePicker";
 import { VoiceInputButton } from "../components/VoiceInputButton";
-import { formatNetworkError } from "../api/blog";
-import { importRestaurantBlog } from "../api/restaurant";
+import type { RestaurantImportResponse } from "../api/restaurant";
 import {
   geocodePlaceName,
   locationFromCoords,
@@ -37,11 +43,15 @@ import {
   addFoodReviewSection,
   canImportRestaurant,
   createEmptyRestaurantData,
+  effectiveRestaurantFields,
+  initRestaurantTemplateData,
   patchRestaurantSection,
   normalizeRestaurantData,
   patchSummary,
   removeFoodReviewSection,
   restaurantToMarkdown,
+  RESTAURANT_FIELD_PREFIXES,
+  sanitizeRestaurantFieldValue,
 } from "../utils/restaurantTemplate";
 import { parseSummaryContent } from "../utils/restaurantRatings";
 
@@ -85,45 +95,88 @@ function BasicInfoFields({
     onChange({ location });
   };
 
-  const geocodeAddress = useCallback(async () => {
-    const query =
-      [info.name, info.address, data.region].filter(Boolean).join(" ").trim() ||
-      info.address.trim();
-    if (!query) {
-      Alert.alert("주소 입력", "상호명 또는 주소를 입력해 주세요.");
-      return;
-    }
-    setGeocoding(true);
-    try {
-      const result = await geocodePlaceName(query);
-      if (!result) {
-        setLocation(
-          locationFromPlaceName(query, data.mapProvider),
-        );
-        Alert.alert(
-          "좌표 없음",
-          "정확한 좌표는 찾지 못했지만 장소명으로 지도를 연결했습니다.",
-        );
+  const isVagueAddress = (raw) => {
+    const addressRaw = String(raw ?? "").trim();
+    return (
+      !addressRaw ||
+      /방문\s*(?:전|후)\s*확인|참고|블로그/i.test(addressRaw) ||
+      addressRaw.length < 6
+    );
+  };
+
+  const geocodeByQuery = useCallback(
+    async (query: string, fillAddressIfEmpty: boolean) => {
+      if (!query.trim()) {
+        Alert.alert("주소 입력", "상호명 또는 주소를 입력해 주세요.");
         return;
       }
-      const label = info.name.trim() || result.label;
-      if (info.address.trim() && !info.address.includes(result.label)) {
-        patchInfo({ ...info, address: info.address.trim() || result.label });
+      setGeocoding(true);
+      try {
+        const result = await geocodePlaceName(query);
+        if (!result) {
+          setLocation(locationFromPlaceName(query, data.mapProvider));
+          Alert.alert(
+            "좌표 없음",
+            "정확한 좌표는 찾지 못했지만 장소명으로 지도를 연결했습니다.",
+          );
+          return;
+        }
+        const placeName =
+          info.name.trim() || data.restaurantName.trim() || result.label;
+        if (fillAddressIfEmpty && isVagueAddress(info.address)) {
+          patchInfo({ ...info, address: result.label });
+        }
+        setLocation(
+          locationFromCoords(
+            result.latitude,
+            result.longitude,
+            placeName,
+            data.mapProvider,
+          ),
+        );
+      } catch {
+        Alert.alert("지도 연결 실패", "주소를 지도에 연결하지 못했습니다.");
+      } finally {
+        setGeocoding(false);
       }
-      setLocation(
-        locationFromCoords(
-          result.latitude,
-          result.longitude,
-          label,
-          data.mapProvider,
-        ),
-      );
-    } catch {
-      Alert.alert("지도 연결 실패", "주소를 지도에 연결하지 못했습니다.");
-    } finally {
-      setGeocoding(false);
+    },
+    [data.mapProvider, data.restaurantName, info, setLocation],
+  );
+
+  /** 상호명(+지역)으로 검색 — 주소가 비었을 때 */
+  const geocodeByName = useCallback(async () => {
+    const placeName = info.name.trim() || data.restaurantName.trim() || "";
+    const query = [placeName, data.region].filter(Boolean).join(" ").trim();
+    if (!query) {
+      Alert.alert("가게명 입력", "상호명 또는 맛집명을 입력해 주세요.");
+      return;
     }
-  }, [data.mapProvider, data.region, info, setLocation]);
+    await geocodeByQuery(query, true);
+  }, [data.region, data.restaurantName, geocodeByQuery, info.name]);
+
+  /** 직접 입력한 주소로 검색 */
+  const geocodeByAddress = useCallback(async () => {
+    const addressRaw = info.address.trim();
+    if (isVagueAddress(addressRaw)) {
+      Alert.alert(
+        "주소 입력",
+        "주소를 직접 입력한 뒤 「주소로 검색」을 눌러 주세요.",
+      );
+      return;
+    }
+    const placeName = info.name.trim() || data.restaurantName.trim() || "";
+    const query = [placeName, addressRaw, data.region]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    await geocodeByQuery(query, false);
+  }, [
+    data.region,
+    data.restaurantName,
+    geocodeByQuery,
+    info.address,
+    info.name,
+  ]);
 
   const useCurrentLocation = useCallback(async () => {
     setLocating(true);
@@ -194,7 +247,7 @@ function BasicInfoFields({
             style={styles.basicInput}
             value={info.address}
             onChangeText={(address) => patchInfo({ ...info, address })}
-            placeholder="주소 입력"
+            placeholder="주소를 직접 입력하거나 가게명으로 검색"
           />
           <VoiceInputButton
             baseText={info.address}
@@ -205,13 +258,20 @@ function BasicInfoFields({
           <Pressable
             style={[styles.locBtn, geocoding && styles.btnDisabled]}
             disabled={geocoding}
-            onPress={() => void geocodeAddress()}
+            onPress={() => void geocodeByName()}
           >
             {geocoding ? (
               <ActivityIndicator size="small" color="#0369a1" />
             ) : (
-              <Text style={styles.locBtnText}>주소 → 지도</Text>
+              <Text style={styles.locBtnText}>가게명으로 검색</Text>
             )}
+          </Pressable>
+          <Pressable
+            style={[styles.locBtn, geocoding && styles.btnDisabled]}
+            disabled={geocoding}
+            onPress={() => void geocodeByAddress()}
+          >
+            <Text style={styles.locBtnText}>주소로 검색</Text>
           </Pressable>
           <Pressable
             style={[styles.locBtn, locating && styles.btnDisabled]}
@@ -251,6 +311,12 @@ function BasicInfoFields({
               onResult={(t) => patchInfo({ ...info, [key]: t })}
             />
           </View>
+          {key === "parking" ? (
+            <ParkingImagesRow
+              images={data.parkingImages ?? []}
+              onChange={(parkingImages) => onChange({ parkingImages })}
+            />
+          ) : null}
         </View>
       ))}
 
@@ -262,6 +328,48 @@ function BasicInfoFields({
           <Text style={styles.clearLocText}>지도 위치 제거</Text>
         </Pressable>
       ) : null}
+    </View>
+  );
+}
+
+/** 주차 필드 아래 사진 첨부 (섹션 이미지 패턴 재사용) */
+function ParkingImagesRow({
+  images,
+  onChange,
+}: {
+  images: string[];
+  onChange: (uris: string[]) => void;
+}) {
+  const addImage = async (useCamera: boolean) => {
+    const uri = await pickImage(useCamera);
+    if (uri) onChange([...images, uri]);
+  };
+
+  return (
+    <View style={styles.parkingImages}>
+      {images.length > 0 ? (
+        <View style={styles.parkingImageGrid}>
+          {images.map((uri, i) => (
+            <View key={`${uri}-${i}`} style={styles.parkingImageWrap}>
+              <Image source={{ uri }} style={styles.parkingThumb} />
+              <Pressable
+                style={styles.parkingImageDel}
+                onPress={() => onChange(images.filter((_, idx) => idx !== i))}
+              >
+                <Text style={styles.parkingImageDelText}>✕</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      <View style={styles.parkingToolRow}>
+        <Pressable style={styles.parkingToolBtn} onPress={() => void addImage(true)}>
+          <Text style={styles.parkingToolBtnText}>📷 주차 사진</Text>
+        </Pressable>
+        <Pressable style={styles.parkingToolBtn} onPress={() => void addImage(false)}>
+          <Text style={styles.parkingToolBtnText}>🖼 갤러리</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -281,9 +389,28 @@ export function RestaurantTemplateScreen({
 }: Props) {
   const insets = useSafeAreaInsets();
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [showBlogImport, setShowBlogImport] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const data = normalizeRestaurantData(
     draft.restaurant ?? createEmptyRestaurantData(),
   );
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSub = Keyboard.addListener(showEvent, () =>
+      setKeyboardVisible(true),
+    );
+    const hideSub = Keyboard.addListener(hideEvent, () =>
+      setKeyboardVisible(false),
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const patchRestaurant = useCallback(
     (patch: Partial<RestaurantTemplateData>) => {
@@ -302,14 +429,20 @@ export function RestaurantTemplateScreen({
 
   const patchTitle = useCallback(
     (title: string) => {
+      const clean = sanitizeRestaurantFieldValue(title, "restaurantName");
       onChangeDraft({
         ...draft,
-        title,
-        restaurant: { ...data, restaurantName: title },
+        title: clean,
+        restaurant: { ...data, restaurantName: clean },
         updatedAt: new Date().toISOString(),
       });
     },
     [data, draft, onChangeDraft],
+  );
+
+  const titleValue = sanitizeRestaurantFieldValue(
+    draft.title || data.restaurantName,
+    "restaurantName",
   );
 
   const handleTemplateChange = useCallback(
@@ -322,40 +455,21 @@ export function RestaurantTemplateScreen({
         });
         return;
       }
+      const restaurant = initRestaurantTemplateData(draft.restaurant, draft.title);
       onChangeDraft({
         ...draft,
         template: "restaurant",
-        restaurant: draft.restaurant ?? createEmptyRestaurantData(),
+        title: draft.title.trim() || restaurant.restaurantName,
+        restaurant,
+        body: restaurantToMarkdown(restaurant),
         updatedAt: new Date().toISOString(),
       });
     },
     [draft, onChangeDraft],
   );
 
-  const handleImport = useCallback(async () => {
-    if (!canImportRestaurant(data)) {
-      Alert.alert(
-        "입력 필요",
-        "가져오기를 위해 지역과 맛집명(제목) 2가지를 입력해 주세요.",
-      );
-      return;
-    }
-    if (apiUrlNeedsSetup) {
-      Alert.alert("PC API 주소 설정 필요", "⚙ 설정에서 PC API 주소를 입력해 주세요.", [
-        { text: "취소", style: "cancel" },
-        { text: "설정 열기", onPress: onOpenSettings },
-      ]);
-      return;
-    }
-
-    onImportStart();
-    try {
-      const result = await importRestaurantBlog({
-        region: data.region.trim(),
-        restaurantName: data.restaurantName.trim() || draft.title.trim(),
-        mainMenu: data.mainMenu.trim() || undefined,
-      });
-
+  const applyImportResult = useCallback(
+    async (result: RestaurantImportResponse) => {
       let nextData = normalizeRestaurantData({
         region: result.region,
         restaurantName: result.restaurantName,
@@ -363,6 +477,7 @@ export function RestaurantTemplateScreen({
         mapProvider: data.mapProvider,
         location: data.location,
         basicInfo: result.basicInfo,
+        parkingImages: data.parkingImages,
         sections: data.sections.map((s) => {
           const imported = result.sections[s.key];
           return imported ? { ...s, content: imported } : s;
@@ -384,6 +499,41 @@ export function RestaurantTemplateScreen({
         if (summarySec) summarySec.content = summaryImported;
       }
 
+      const geocodeQuery =
+        result.geocodeHint?.geocodeQuery ||
+        [result.basicInfo.name, result.basicInfo.address, result.region]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+
+      if (geocodeQuery) {
+        try {
+          const geo = await geocodePlaceName(geocodeQuery);
+          const label =
+            result.basicInfo.name.trim() ||
+            result.geocodeHint?.address ||
+            geocodeQuery;
+          if (geo) {
+            nextData = {
+              ...nextData,
+              location: locationFromCoords(
+                geo.latitude,
+                geo.longitude,
+                label,
+                nextData.mapProvider,
+              ),
+            };
+          } else {
+            nextData = {
+              ...nextData,
+              location: locationFromPlaceName(label, nextData.mapProvider),
+            };
+          }
+        } catch {
+          /* 지도 연결 실패 시 주소만 유지 */
+        }
+      }
+
       const body = restaurantToMarkdown(nextData);
       onChangeDraft({
         ...draft,
@@ -398,23 +548,31 @@ export function RestaurantTemplateScreen({
         "가져오기 완료",
         result.importMeta?.message ??
           (result.sources && result.sources.length > 0
-            ? `${result.sources.length}개 블로그를 참고해 내용을 채웠습니다. 필요한 부분을 수정해 주세요.`
+            ? `선택한 블로그를 참고해 내용을 채웠습니다. 지도와 주소를 확인해 주세요.`
             : "내용을 채웠습니다. 필요한 부분을 수정해 주세요."),
       );
-    } catch (e) {
-      Alert.alert("가져오기 실패", formatNetworkError(e));
-    } finally {
-      onImportEnd();
+    },
+    [data, draft, onChangeDraft],
+  );
+
+  const handleImport = useCallback(() => {
+    if (!canImportRestaurant(data)) {
+      Alert.alert(
+        "입력 필요",
+        "가져오기를 위해 지역과 맛집명(제목) 2가지를 입력해 주세요.",
+      );
+      return;
     }
-  }, [
-    apiUrlNeedsSetup,
-    data,
-    draft,
-    onChangeDraft,
-    onImportEnd,
-    onImportStart,
-    onOpenSettings,
-  ]);
+    if (apiUrlNeedsSetup) {
+      Alert.alert("PC API 주소 설정 필요", "⚙ 설정에서 PC API 주소를 입력해 주세요.", [
+        { text: "취소", style: "cancel" },
+        { text: "설정 열기", onPress: onOpenSettings },
+      ]);
+      return;
+    }
+    setShowBlogImport(true);
+    onImportStart();
+  }, [apiUrlNeedsSetup, data, onImportStart, onOpenSettings]);
 
   const syncBody = useCallback(
     (nextData: RestaurantTemplateData) => {
@@ -428,18 +586,30 @@ export function RestaurantTemplateScreen({
     [draft, onChangeDraft],
   );
 
+  const footerPad = Math.max(insets.bottom, 20) + 8;
+  const scrollBottomPad = keyboardVisible
+    ? 48 + insets.bottom
+    : 120 + footerPad + insets.bottom;
+
   return (
-    <View style={styles.wrap}>
+    <KeyboardAvoidingView
+      style={styles.wrap}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
+    >
       <View style={styles.topBar}>
         <View style={styles.titleRow}>
-          <TextInput
+          <PrefixedFieldInput
+            prefix={RESTAURANT_FIELD_PREFIXES.restaurantName}
+            placeholder="맛집명 입력"
+            large
+            containerStyle={styles.titlePrefixed}
             style={styles.titleInput}
-            placeholder="맛집 제목"
-            value={draft.title || data.restaurantName}
+            value={titleValue}
             onChangeText={patchTitle}
           />
           <VoiceInputButton
-            baseText={draft.title || data.restaurantName}
+            baseText={titleValue}
             onResult={patchTitle}
           />
         </View>
@@ -447,7 +617,7 @@ export function RestaurantTemplateScreen({
           <Pressable
             style={[styles.importBtn, importing && styles.btnDisabled]}
             disabled={importing}
-            onPress={() => void handleImport()}
+            onPress={handleImport}
           >
             {importing ? (
               <ActivityIndicator color="#fff" size="small" />
@@ -465,24 +635,38 @@ export function RestaurantTemplateScreen({
       </View>
 
       <View style={styles.metaRow}>
-        <TextInput
-          style={styles.metaInput}
-          placeholder="지역 (예: 강남)"
+        <PrefixedFieldInput
+          prefix={RESTAURANT_FIELD_PREFIXES.region}
+          placeholder="예: 강남"
+          containerStyle={styles.metaInputWrap}
+          style={styles.metaInputInner}
           value={data.region}
-          onChangeText={(region) => patchRestaurant({ region })}
+          onChangeText={(region) =>
+            patchRestaurant({
+              region: sanitizeRestaurantFieldValue(region, "region"),
+            })
+          }
         />
-        <TextInput
-          style={styles.metaInput}
-          placeholder="대표메뉴"
+        <PrefixedFieldInput
+          prefix={RESTAURANT_FIELD_PREFIXES.mainMenu}
+          placeholder="예: 삼겹살"
+          containerStyle={styles.metaInputWrap}
+          style={styles.metaInputInner}
           value={data.mainMenu}
-          onChangeText={(mainMenu) => patchRestaurant({ mainMenu })}
+          onChangeText={(mainMenu) =>
+            patchRestaurant({
+              mainMenu: sanitizeRestaurantFieldValue(mainMenu, "mainMenu"),
+            })
+          }
         />
       </View>
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
+        contentContainerStyle={{ paddingBottom: scrollBottomPad }}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
       >
         {(["intro", "atmosphere", "menu", "foodReview", "summary", "closing"] as const).map(
           (key) => {
@@ -584,7 +768,13 @@ export function RestaurantTemplateScreen({
         )}
 
         <View style={styles.bottomActions}>
-          <Pressable style={styles.previewBtn} onPress={onPreview}>
+          <Pressable
+            style={styles.previewBtn}
+            onPress={() => {
+              syncBody(data);
+              onPreview();
+            }}
+          >
             <Text style={styles.previewBtnText}>미리보기</Text>
           </Pressable>
           {draft.body ? (
@@ -595,19 +785,25 @@ export function RestaurantTemplateScreen({
         </View>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        <Pressable
-          style={[styles.aiBtn, (generating || importing) && styles.btnDisabled]}
-          disabled={generating || importing}
-          onPress={onGenerate}
-        >
-          {generating ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.aiBtnText}>AI 글쓰기</Text>
-          )}
-        </Pressable>
-      </View>
+      {/* 키보드가 올라오면 절대 footer를 숨겨 입력칸이 가려지지 않게 함 */}
+      {!keyboardVisible ? (
+        <View style={[styles.footer, { paddingBottom: footerPad }]}>
+          <Pressable
+            style={[
+              styles.aiBtn,
+              (generating || importing) && styles.btnDisabled,
+            ]}
+            disabled={generating || importing}
+            onPress={onGenerate}
+          >
+            {generating ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.aiBtnText}>AI 글쓰기</Text>
+            )}
+          </Pressable>
+        </View>
+      ) : null}
 
       <TemplatePicker
         visible={showTemplatePicker}
@@ -615,7 +811,27 @@ export function RestaurantTemplateScreen({
         onSelect={handleTemplateChange}
         onClose={() => setShowTemplatePicker(false)}
       />
-    </View>
+
+      <BlogImportModal
+        visible={showBlogImport}
+        payload={
+          showBlogImport
+            ? {
+                region: effectiveRestaurantFields(data).region,
+                restaurantName:
+                  effectiveRestaurantFields(data).restaurantName ||
+                  sanitizeRestaurantFieldValue(draft.title, "restaurantName"),
+                mainMenu: effectiveRestaurantFields(data).mainMenu || undefined,
+              }
+            : null
+        }
+        onClose={() => {
+          setShowBlogImport(false);
+          onImportEnd();
+        }}
+        onApplied={applyImportResult}
+      />
+    </KeyboardAvoidingView>
   );
 }
 
@@ -623,14 +839,17 @@ const styles = StyleSheet.create({
   wrap: { flex: 1 },
   topBar: { marginBottom: 8 },
   titleRow: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
+  titlePrefixed: {
+    flex: 1,
+    borderBottomWidth: 2,
+    borderBottomColor: "#2563eb",
+    paddingVertical: 8,
+  },
   titleInput: {
     flex: 1,
     fontSize: 20,
     fontWeight: "800",
     color: "#0f172a",
-    borderBottomWidth: 2,
-    borderBottomColor: "#2563eb",
-    paddingVertical: 8,
   },
   topActions: { flexDirection: "row", gap: 8 },
   importBtn: {
@@ -653,15 +872,16 @@ const styles = StyleSheet.create({
   templateBtnText: { color: "#2563eb", fontWeight: "700", fontSize: 14 },
   btnDisabled: { opacity: 0.6 },
   metaRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
-  metaInput: {
+  metaInputWrap: {
     flex: 1,
     borderWidth: 1,
     borderColor: "#e2e8f0",
     borderRadius: 8,
-    padding: 10,
-    fontSize: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
     backgroundColor: "#fff",
   },
+  metaInputInner: { fontSize: 14 },
   scroll: { flex: 1 },
   basicCard: {
     backgroundColor: "#fff",
@@ -689,7 +909,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     backgroundColor: "#fff",
   },
-  locActions: { flexDirection: "row", gap: 8, marginTop: 8 },
+  locActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 8,
+  },
   locBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -699,6 +924,40 @@ const styles = StyleSheet.create({
   locBtnText: { color: "#0369a1", fontWeight: "600", fontSize: 13 },
   clearLocBtn: { marginTop: 8, alignSelf: "flex-start" },
   clearLocText: { color: "#64748b", fontSize: 13 },
+  parkingImages: { marginTop: 8 },
+  parkingImageGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 8,
+  },
+  parkingImageWrap: { position: "relative" },
+  parkingThumb: {
+    width: 88,
+    height: 88,
+    borderRadius: 8,
+    backgroundColor: "#f1f5f9",
+  },
+  parkingImageDel: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  parkingImageDelText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  parkingToolRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  parkingToolBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: "#e0e7ff",
+    borderRadius: 8,
+  },
+  parkingToolBtnText: { fontSize: 12, fontWeight: "600", color: "#3730a3" },
   addFoodReviewBtn: {
     marginBottom: 12,
     paddingVertical: 13,

@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { BlogDraft, DraftListState, Step, StepStatus } from "../types";
-import { createEmptyRestaurantData, normalizeRestaurantData } from "../utils/restaurantTemplate";
+import { createEmptyRestaurantData, normalizeRestaurantData, isRestaurantPlaceholderField, sanitizeRestaurantFieldValue } from "../utils/restaurantTemplate";
 
 const LEGACY_KEY = "@9rudocs/draft";
 const DRAFTS_KEY = "@9rudocs/drafts";
@@ -199,9 +199,12 @@ export function getActiveDraft(state: DraftListState): BlogDraft {
 }
 
 export function draftDisplayTitle(draft: BlogDraft): string {
-  if (draft.title.trim()) return draft.title.trim();
+  if (draft.title.trim() && !isRestaurantPlaceholderField(draft.title)) {
+    return draft.title.trim();
+  }
   if (draft.template === "restaurant" && draft.restaurant?.restaurantName) {
-    return draft.restaurant.restaurantName;
+    const name = sanitizeRestaurantFieldValue(draft.restaurant.restaurantName);
+    if (name) return name;
   }
   if (draft.steps[0]?.caption) {
     return draft.steps[0].caption.slice(0, 30);

@@ -11,6 +11,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BlogDraft } from "../types";
 import { draftDisplayTitle } from "../storage/draftStorage";
 
@@ -54,6 +55,7 @@ const DrawerPanel = memo(function DrawerPanel({
   onDeleteChecked,
   onNewDraft,
 }: Omit<Props, "children">) {
+  const insets = useSafeAreaInsets();
   const sorted = useMemo(
     () =>
       [...drafts].sort(
@@ -113,6 +115,7 @@ const DrawerPanel = memo(function DrawerPanel({
         style={[
           styles.deleteBtn,
           checkedIds.size === 0 && styles.deleteBtnDisabled,
+          { marginBottom: Math.max(insets.bottom, 8) + 8 },
         ]}
         disabled={checkedIds.size === 0}
         onPress={onDeleteChecked}
@@ -450,7 +453,6 @@ const styles = StyleSheet.create({
   deleteBtn: {
     marginHorizontal: 12,
     marginTop: 8,
-    marginBottom: 8,
     paddingVertical: 12,
     borderRadius: 10,
     backgroundColor: "#fee2e2",

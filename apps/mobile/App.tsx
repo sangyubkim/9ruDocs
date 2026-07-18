@@ -375,6 +375,7 @@ function AppInner() {
         {screen === "publish" && (
           <PublishScreen
             draft={draft}
+            onOpenSettings={() => setShowSettings(true)}
             onBack={() =>
               setScreen(
                 draft.template === "restaurant"

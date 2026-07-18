@@ -70,6 +70,8 @@ export type RestaurantTemplateData = {
   mapProvider: MapProvider;
   location: StepLocation | null;
   basicInfo: RestaurantBasicInfo;
+  /** 주차 안내 사진 (기본정보 주차 필드와 별도) */
+  parkingImages: string[];
   sections: RestaurantSection[];
   ratings: RestaurantRatings;
   summaryHead: string;

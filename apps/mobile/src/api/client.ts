@@ -29,20 +29,23 @@ export function formatApiConnectionError(
   const base = (apiBaseUrl ?? _baseUrl).trim();
   const msg = e instanceof Error ? e.message : String(e);
   if (
-    /network request failed|failed to fetch|network error|econnrefused|enotfound|etimedout|cleartext|ssl|certificate/i.test(
+    /network request failed|failed to fetch|fetch failed|network error|econnrefused|enotfound|etimedout|cleartext|ssl|certificate/i.test(
       msg,
     )
   ) {
     const addr = base || "http://192.168.x.x:3001";
+    const cloudHint = addr.includes("cloudwaysapps.com")
+      ? "\n\nCloudways API라면 URL 끝이 /apps/api 인지, 휴대폰 인터넷이 되는지 확인하세요."
+      : "\n\n프리뷰 APK는 Expo Go와 달리 PC IP(또는 Cloudways API URL)를 앱에서 직접 설정해야 합니다.\n\n" +
+        "1) PC·폰 같은 Wi-Fi 연결 (로컬 API 사용 시)\n" +
+        "2) PC에서 scripts\\start-api.bat 실행 (포트 3001)\n" +
+        "3) cmd에서 ipconfig → IPv4 확인 (예: 192.168.0.10)\n" +
+        "4) 앱 ⚙ 설정에 http://192.168.0.10:3001 또는 Cloudways API URL 입력 후 「연결 테스트」\n" +
+        "5) Windows 방화벽에서 Node.js 허용";
     return (
-      "9ruDocs API(PC)에 연결할 수 없습니다.\n\n" +
-      `현재 API 주소: ${addr}\n\n` +
-      "프리뷰 APK는 Expo Go와 달리 PC IP를 앱에서 직접 설정해야 합니다.\n\n" +
-      "1) PC·폰 같은 Wi-Fi 연결\n" +
-      "2) PC에서 scripts\\start-api.bat 실행 (포트 3001)\n" +
-      "3) cmd에서 ipconfig → IPv4 확인 (예: 192.168.0.10)\n" +
-      "4) 앱 ⚙ 설정에 http://192.168.0.10:3001 입력 후 「연결 테스트」\n" +
-      "5) Windows 방화벽에서 Node.js 허용"
+      "9ruDocs API에 연결할 수 없습니다.\n\n" +
+      `현재 API 주소: ${addr}` +
+      cloudHint
     );
   }
   return msg;

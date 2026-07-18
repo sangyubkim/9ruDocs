@@ -14,7 +14,7 @@ import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BlogDraft, Step, StepLocation } from "../types";
 import { createStep } from "../storage/draftStorage";
-import { createEmptyRestaurantData } from "../utils/restaurantTemplate";
+import { initRestaurantTemplateData, restaurantToMarkdown } from "../utils/restaurantTemplate";
 import { pickImage as pickImageUtil } from "../utils/imagePicker";
 import { TemplatePicker } from "../components/TemplatePicker";
 import { VoiceInputButton } from "../components/VoiceInputButton";
@@ -437,10 +437,16 @@ export function HomeScreen({
         current="basic"
         onSelect={(template) => {
           if (template === "restaurant") {
+            const restaurant = initRestaurantTemplateData(
+              draft.restaurant,
+              draft.title,
+            );
             onChangeDraft({
               ...draft,
               template: "restaurant",
-              restaurant: draft.restaurant ?? createEmptyRestaurantData(),
+              title: draft.title.trim() || restaurant.restaurantName,
+              restaurant,
+              body: restaurantToMarkdown(restaurant),
               updatedAt: new Date().toISOString(),
             });
           }

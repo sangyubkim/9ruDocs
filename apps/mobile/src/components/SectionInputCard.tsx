@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  Alert,
   Image,
   Pressable,
   StyleSheet,
@@ -42,9 +43,23 @@ export function SectionInputCard({
     onChangeImages(images.filter((_, i) => i !== index));
   };
 
+  const confirmRemoveSection = () => {
+    if (!onRemove) return;
+    Alert.alert(
+      "섹션 삭제",
+      `「${label}」 섹션을 삭제할까요?`,
+      [
+        { text: "취소", style: "cancel" },
+        { text: "삭제", style: "destructive", onPress: onRemove },
+      ],
+    );
+  };
+
   return (
     <View style={styles.card}>
-      <Text style={styles.label}>{label}</Text>
+      <View style={styles.labelRow}>
+        <Text style={styles.label}>{label}</Text>
+      </View>
 
       {images.length > 0 ? (
         <View style={styles.imageGrid}>
@@ -72,14 +87,14 @@ export function SectionInputCard({
         >
           <Text style={styles.toolBtnText}>{editing ? "👁 미리보기" : "✏️ 편집"}</Text>
         </Pressable>
-        <Pressable
-          style={styles.toolBtnDanger}
-          onPress={onRemove ?? (() => onChangeContent(""))}
-        >
-          <Text style={styles.toolBtnDangerText}>
-            {onRemove ? "리뷰 삭제" : "삭제"}
-          </Text>
-        </Pressable>
+        {!onRemove ? (
+          <Pressable
+            style={styles.toolBtnDanger}
+            onPress={() => onChangeContent("")}
+          >
+            <Text style={styles.toolBtnDangerText}>내용 비우기</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {editing ? (
@@ -101,6 +116,18 @@ export function SectionInputCard({
           </Text>
         </Pressable>
       )}
+
+      {onRemove ? (
+        <Pressable
+          style={styles.footerDel}
+          onPress={confirmRemoveSection}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`${label} 섹션 삭제`}
+        >
+          <Text style={styles.footerDelText}>🗑 {label} 삭제</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -114,12 +141,29 @@ const styles = StyleSheet.create({
     borderColor: "#e2e8f0",
     marginBottom: 12,
   },
+  labelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
   label: {
     fontSize: 15,
     fontWeight: "800",
     color: "#0f172a",
-    marginBottom: 10,
+    flex: 1,
   },
+  footerDel: {
+    marginTop: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    backgroundColor: "#fef2f2",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    alignItems: "center",
+  },
+  footerDelText: { fontSize: 14, fontWeight: "700", color: "#b91c1c" },
   imageGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -163,7 +207,6 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     backgroundColor: "#fee2e2",
     borderRadius: 8,
-    marginLeft: "auto",
   },
   toolBtnDangerText: { fontSize: 12, fontWeight: "600", color: "#b91c1c" },
   inputRow: { flexDirection: "row", alignItems: "flex-start" },

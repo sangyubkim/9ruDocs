@@ -1,11 +1,16 @@
+import { markdownToHtml } from "./markdown-to-html.mjs";
+
 function wpAuthHeader(username, appPassword) {
   const token = Buffer.from(`${username}:${appPassword}`).toString("base64");
   return `Basic ${token}`;
 }
 
 function wpBase(siteUrl) {
-  return siteUrl.replace(/\/+$/, "");
+  return String(siteUrl ?? "").replace(/\/+$/, "");
 }
+
+const INVALID_SITE_URL_MSG =
+  "올바른 URL 형식이 아닙니다. 예: https://yoursite.com";
 
 /**
  * @param {string} raw
@@ -17,25 +22,38 @@ export function normalizeWordPressSiteUrl(raw) {
     return { ok: false, error: "사이트 URL을 입력하세요." };
   }
 
+  // 중복 scheme 제거: https://https://example.com → https://example.com
+  input = input.replace(/^(https?:\/\/)+/i, (m) => m.match(/^https/i) ? "https://" : "http://");
+  // 깨진 https://https 또는 https://https//… 형태
+  input = input.replace(/^(https?:\/\/)https?:\/+/i, "$1");
+
+  if (/^https?:\/\/?$/i.test(input) || /^https?$/i.test(input)) {
+    return { ok: false, error: INVALID_SITE_URL_MSG };
+  }
+
   if (!/^https?:\/\//i.test(input)) {
-    input = `https://${input}`;
+    input = input.startsWith("//") ? `https:${input}` : `https://${input}`;
   }
 
   let parsed;
   try {
     parsed = new URL(input);
   } catch {
-    return {
-      ok: false,
-      error: "올바른 URL 형식이 아닙니다. 예: https://yoursite.com",
-    };
+    return { ok: false, error: INVALID_SITE_URL_MSG };
   }
 
-  if (!parsed.hostname) {
-    return {
-      ok: false,
-      error: "올바른 URL 형식이 아닙니다. 예: https://yoursite.com",
-    };
+  const hostname = String(parsed.hostname ?? "").trim().toLowerCase();
+  if (!hostname || hostname === "http" || hostname === "https") {
+    return { ok: false, error: INVALID_SITE_URL_MSG };
+  }
+
+  // 실제 호스트 요구: localhost 또는 점 포함 도메인/IP
+  const looksLikeHost =
+    hostname === "localhost" ||
+    hostname.includes(".") ||
+    /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
+  if (!looksLikeHost) {
+    return { ok: false, error: INVALID_SITE_URL_MSG };
   }
 
   let pathname = parsed.pathname.replace(/\/+$/, "") || "";
@@ -43,9 +61,50 @@ export function normalizeWordPressSiteUrl(raw) {
   pathname = pathname.replace(/\/wp-login\.php$/i, "");
   pathname = pathname.replace(/\/wp-json(\/.*)?$/i, "");
 
+  // scheme 중복 파싱 잔여(//host)는 버리고 origin만 사용
+  if (pathname.startsWith("//")) {
+    pathname = "";
+  }
+
   const origin = `${parsed.protocol}//${parsed.host}`;
   const url = pathname ? `${origin}${pathname}` : origin;
   return { ok: true, url: url.replace(/\/+$/, "") };
+}
+
+/**
+ * body siteUrl이 비어 있거나 깨지면 env로 폴백 (클라이언트가 "https://" 등으로 env를 덮어쓰지 못하게)
+ * @param {unknown} bodySiteUrl
+ * @param {string} envSiteUrl
+ * @returns {{ ok: true, url: string, from: "body" | "env" } | { ok: false, error: string }}
+ */
+export function resolveWordPressSiteUrl(bodySiteUrl, envSiteUrl) {
+  const bodyRaw = String(bodySiteUrl ?? "").trim();
+  const envRaw = String(envSiteUrl ?? "").trim();
+
+  if (bodyRaw) {
+    const bodyNorm = normalizeWordPressSiteUrl(bodyRaw);
+    if (bodyNorm.ok) {
+      return { ok: true, url: bodyNorm.url, from: "body" };
+    }
+    // 깨진 body는 env로 폴백 (env도 없으면 body 오류 반환)
+    if (!envRaw) {
+      return { ok: false, error: bodyNorm.error };
+    }
+  }
+
+  if (!envRaw) {
+    return {
+      ok: false,
+      error:
+        "사이트 URL을 입력하세요. 앱 설정 또는 서버 WP_SITE_URL이 필요합니다.",
+    };
+  }
+
+  const envNorm = normalizeWordPressSiteUrl(envRaw);
+  if (!envNorm.ok) {
+    return { ok: false, error: envNorm.error };
+  }
+  return { ok: true, url: envNorm.url, from: "env" };
 }
 
 function wpErrorFromResponse(status, json, requestUrl) {
@@ -108,7 +167,15 @@ async function wpFetch(siteUrl, username, appPassword, path, init = {}) {
     Authorization: wpAuthHeader(username, appPassword),
     ...(init.headers ?? {}),
   };
-  const res = await fetch(url, { ...init, headers });
+  let res;
+  try {
+    res = await fetch(url, { ...init, headers });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `WordPress에 연결할 수 없습니다: ${msg}\n요청: ${url}\n사이트 URL·SSL·방화벽을 확인하세요.`,
+    );
+  }
   const text = await res.text();
   let json = null;
   try {
@@ -169,12 +236,13 @@ export async function resolveTagIds(siteUrl, username, appPassword, tagNames) {
   return [...new Set(ids)];
 }
 
-function buildSeoContent({ content, excerpt, seo }) {
-  const summary = seo?.metaDescription ?? excerpt ?? "";
-  const block = summary
-    ? `> **요약:** ${summary}\n\n`
-    : "";
-  return block + content;
+function buildSeoContent({ content }) {
+  // excerpt/seo는 WP excerpt·Yoast 필드만 사용 — 본문 앞에 「요약」을 붙이지 않음 (중복 방지)
+  return String(content ?? "");
+}
+
+function looksLikeHtml(content) {
+  return /^\s*</.test(String(content ?? "")) && /<\/[a-z][\w-]*>/i.test(content);
 }
 
 function normalizeAppPassword(raw) {
@@ -184,22 +252,20 @@ function normalizeAppPassword(raw) {
 }
 
 export async function verifyWordPressCredentials(body, env) {
-  const rawSiteUrl = body?.siteUrl?.trim() || env.wpSiteUrl;
   const username = body?.username?.trim() || env.wpUsername;
   const appPassword =
     normalizeAppPassword(body?.appPassword) || normalizeAppPassword(env.wpAppPassword);
 
-  if (!rawSiteUrl || !username || !appPassword) {
+  const resolved = resolveWordPressSiteUrl(body?.siteUrl, env.wpSiteUrl);
+  if (!resolved.ok) {
+    throw new Error(resolved.error);
+  }
+  if (!username || !appPassword) {
     throw new Error(
       "WordPress 자격 증명이 없습니다. 사이트 URL, 사용자명, 애플리케이션 비밀번호를 입력하거나 서버 .env를 설정하세요.",
     );
   }
-
-  const normalized = normalizeWordPressSiteUrl(rawSiteUrl);
-  if (!normalized.ok) {
-    throw new Error(normalized.error);
-  }
-  const siteUrl = normalized.url;
+  const siteUrl = resolved.url;
 
   await checkWordPressRestApi(siteUrl);
 
@@ -217,22 +283,20 @@ export async function verifyWordPressCredentials(body, env) {
 }
 
 export async function publishToWordPress(body, env) {
-  const rawSiteUrl = body?.siteUrl?.trim() || env.wpSiteUrl;
   const username = body?.username?.trim() || env.wpUsername;
   const appPassword =
     normalizeAppPassword(body?.appPassword) || normalizeAppPassword(env.wpAppPassword);
 
-  if (!rawSiteUrl || !username || !appPassword) {
+  const resolved = resolveWordPressSiteUrl(body?.siteUrl, env.wpSiteUrl);
+  if (!resolved.ok) {
+    throw new Error(resolved.error);
+  }
+  if (!username || !appPassword) {
     throw new Error(
       "WordPress 자격 증명이 없습니다. 사이트 URL, 사용자명, 애플리케이션 비밀번호를 입력하거나 서버 .env를 설정하세요.",
     );
   }
-
-  const normalized = normalizeWordPressSiteUrl(rawSiteUrl);
-  if (!normalized.ok) {
-    throw new Error(normalized.error);
-  }
-  const siteUrl = normalized.url;
+  const siteUrl = resolved.url;
 
   const title = String(body?.title ?? "").trim();
   const content = String(body?.content ?? body?.body ?? "").trim();
@@ -256,11 +320,16 @@ export async function publishToWordPress(body, env) {
     if (media?.source_url) mediaUrls.push(media.source_url);
   }
 
-  let finalContent = buildSeoContent({ content, excerpt, seo });
+  let finalContent = buildSeoContent({ content });
 
   if (mediaUrls.length) {
     const imgs = mediaUrls.map((u) => `![step](${u})`).join("\n\n");
-    finalContent = `${finalContent}\n\n## 이미지\n\n${imgs}`;
+    finalContent = `${finalContent}\n\n#### 이미지\n\n${imgs}`;
+  }
+
+  // WordPress는 HTML을 기대 — 마크다운 그대로면 링크·글꼴이 깨짐 (post-3 스타일 HTML)
+  if (!looksLikeHtml(finalContent)) {
+    finalContent = markdownToHtml(finalContent);
   }
 
   const tagIds = tagNames.length

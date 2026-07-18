@@ -4,13 +4,19 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readBody, matchRoute } from "./lib/http-util.mjs";
 import { generateBlogPost } from "./lib/blog-generate.mjs";
-import { importRestaurantBlog } from "./lib/restaurant-import.mjs";
+import {
+  importRestaurantBlog,
+  importFromSelectedBlog,
+  searchRestaurantBlogSources,
+} from "./lib/restaurant-import.mjs";
 import { generateRestaurantBlog } from "./lib/restaurant-generate.mjs";
 import {
   publishToWordPress,
   uploadMedia,
   verifyWordPressCredentials,
+  resolveWordPressSiteUrl,
 } from "./lib/wordpress.mjs";
+import { fetchStaticMapPng } from "./lib/static-map.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 loadEnv(join(__dirname, ".env"));
@@ -18,8 +24,11 @@ loadEnv(join(__dirname, ".env"));
 const API_ROUTES = [
   "GET /health",
   "GET /",
+  "GET /maps/static",
   "POST /blog/generate",
   "POST /blog/restaurant-import",
+  "POST /blog/restaurant-import/search",
+  "POST /blog/restaurant-import/apply",
   "POST /blog/restaurant-generate",
   "POST /wordpress/publish",
   "POST /wordpress/verify",
@@ -68,6 +77,8 @@ function corsHeaders(origin) {
     "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Content-Type": "application/json; charset=utf-8",
+    // Apache/CDN이 /health 등을 오래 캐시하지 않도록
+    "Cache-Control": "no-store",
   };
 }
 
@@ -111,9 +122,53 @@ async function handle(req, res) {
       return;
     }
 
+    if (method === "GET" && url.split("?")[0] === "/maps/static") {
+      const u = new URL(url, `http://${req.headers.host ?? "localhost"}`);
+      const lat = Number.parseFloat(u.searchParams.get("lat") ?? "");
+      const lng = Number.parseFloat(u.searchParams.get("lng") ?? "");
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        send(res, 400, { error: "lat and lng query params required" }, origin);
+        return;
+      }
+      const png = await fetchStaticMapPng(lat, lng);
+      if (!png) {
+        send(res, 502, { error: "Map unavailable" }, origin);
+        return;
+      }
+      const allow =
+        !origin ||
+        env.corsOrigins.includes("*") ||
+        env.corsOrigins.includes(origin);
+      res.writeHead(200, {
+        "Access-Control-Allow-Origin": allow
+          ? (origin || env.corsOrigins[0] || "*")
+          : env.corsOrigins[0],
+        "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Content-Type": "image/png",
+        "Cache-Control": "public, max-age=86400",
+      });
+      res.end(png);
+      return;
+    }
+
     if (matchRoute(url, method, "/blog/generate", "POST")) {
       const body = await readBody(req);
       const result = await generateBlogPost(body, env);
+      send(res, 200, result, origin);
+      return;
+    }
+
+    if (matchRoute(url, method, "/blog/restaurant-import/search", "POST")) {
+      const body = await readBody(req);
+      const result = await searchRestaurantBlogSources(body, env);
+      send(res, 200, result, origin);
+      return;
+    }
+
+    if (matchRoute(url, method, "/blog/restaurant-import/apply", "POST")) {
+      const body = await readBody(req);
+      const result = await importFromSelectedBlog(body, env);
       send(res, 200, result, origin);
       return;
     }
@@ -148,14 +203,23 @@ async function handle(req, res) {
 
     if (matchRoute(url, method, "/wordpress/media", "POST")) {
       const body = await readBody(req);
-      const siteUrl = body?.siteUrl?.trim() || env.wpSiteUrl;
+      const resolved = resolveWordPressSiteUrl(body?.siteUrl, env.wpSiteUrl);
+      if (!resolved.ok) {
+        send(res, 400, { error: resolved.error }, origin);
+        return;
+      }
       const username = body?.username?.trim() || env.wpUsername;
       const appPassword = body?.appPassword?.trim() || env.wpAppPassword;
-      if (!siteUrl || !username || !appPassword) {
+      if (!username || !appPassword) {
         send(res, 400, { error: "WordPress credentials missing" }, origin);
         return;
       }
-      const media = await uploadMedia(siteUrl, username, appPassword, body?.image ?? body);
+      const media = await uploadMedia(
+        resolved.url,
+        username,
+        appPassword,
+        body?.image ?? body,
+      );
       send(res, 200, { id: media.id, source_url: media.source_url }, origin);
       return;
     }

@@ -55,12 +55,18 @@ async function withStoredCredentials(
 ): Promise<Partial<WpSettings>> {
   const stored = await loadWpSettings();
   const rawSiteUrl = creds?.siteUrl?.trim() || stored.siteUrl || "";
-  const siteNorm = rawSiteUrl ? normalizeWordPressSiteUrl(rawSiteUrl) : null;
-  if (siteNorm && !siteNorm.ok) {
-    throw new Error(siteNorm.error);
+  let siteUrl: string | undefined;
+  if (rawSiteUrl) {
+    const siteNorm = normalizeWordPressSiteUrl(rawSiteUrl);
+    if (!siteNorm.ok) {
+      // 깨진 로컬 URL은 보내지 않음 → 서버 WP_SITE_URL 폴백
+      siteUrl = undefined;
+    } else {
+      siteUrl = siteNorm.url;
+    }
   }
   return {
-    siteUrl: siteNorm?.ok ? siteNorm.url : rawSiteUrl || undefined,
+    siteUrl,
     username: creds?.username?.trim() || stored.username || undefined,
     appPassword:
       creds?.appPassword?.trim().replace(/\s+/g, "") ||
@@ -166,12 +172,25 @@ export async function publishToWordPress(
     username: payload.username,
     appPassword: payload.appPassword,
   });
-  const res = await apiFetch("/wordpress/publish", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...payload, ...creds }),
-  });
-  const json = (await res.json()) as PublishResponse & { error?: string };
+  let res: Response;
+  try {
+    res = await apiFetch("/wordpress/publish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...payload, ...creds }),
+    });
+  } catch (e) {
+    if (isApiConnectionError(e)) throw e;
+    throw e;
+  }
+  let json: PublishResponse & { error?: string };
+  try {
+    json = (await res.json()) as PublishResponse & { error?: string };
+  } catch {
+    throw new Error(
+      "9ruDocs API 응답을 해석할 수 없습니다. API 주소가 올바른지(예: …/apps/api) 확인하세요.",
+    );
+  }
   if (!res.ok) {
     throw new Error(json.error ?? `Publish failed: ${res.status}`);
   }

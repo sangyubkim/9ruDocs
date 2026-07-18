@@ -8,7 +8,10 @@ import {
 } from "react-native";
 import { LocationMapPreview } from "../components/LocationMapPreview";
 import type { BlogDraft, Step } from "../types";
-import { normalizeRestaurantData } from "../utils/restaurantTemplate";
+import {
+  normalizeRestaurantData,
+  restaurantToMarkdown,
+} from "../utils/restaurantTemplate";
 import { locationFromPlaceName } from "../utils/maps";
 import { MarkdownPreviewBody } from "../utils/markdownPreview";
 
@@ -50,6 +53,10 @@ export function BlogPreviewScreen({ draft, onEdit, onPublish }: Props) {
     (restaurantLocation.mapsUrl ||
       restaurantLocation.label ||
       restaurantLocation.latitude != null);
+  // 기존 draft.body에 ## 도입부 / # 상호 가 남아 있어도 restaurant에서 재생성
+  const previewBody = restaurant
+    ? restaurantToMarkdown(restaurant)
+    : draft.body;
 
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={styles.content}>
@@ -99,7 +106,7 @@ export function BlogPreviewScreen({ draft, onEdit, onPublish }: Props) {
 
       <View style={styles.divider} />
 
-      <MarkdownPreviewBody body={draft.body} />
+      <MarkdownPreviewBody body={previewBody} />
 
       {stepsWithLocation.length > 0 && draft.template !== "restaurant" ? (
         <View style={styles.section}>

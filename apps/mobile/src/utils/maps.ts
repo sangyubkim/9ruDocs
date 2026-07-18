@@ -119,16 +119,12 @@ export function buildStaticMapUrlCandidates(
   const h = Math.min(Math.max(height, 120), 640);
   const wmSize = `${w}x${h}`;
 
-  const tile = buildOsmTileUrl(latitude, longitude, zoom);
-  const tileZoomOut = buildOsmTileUrl(latitude, longitude, Math.max(zoom - 1, 10));
-
+  // tile.openstreetmap.org — 앱 직접 요청 차단. 정적 맵 서버만 사용.
   return [
-    tile,
-    tileZoomOut,
     `https://staticmap.openstreetmap.de/staticmap.php?center=${center}&zoom=${zoom}&size=${size}&markers=${lat},${lng}`,
     `https://staticmap.openstreetmap.de/staticmap.php?center=${center}&zoom=${zoom}&size=${size}&markers=${markers}`,
     `https://maps.wikimedia.org/img/osm-intl,${zoom},${lat},${lng},${wmSize}.png`,
-    `https://staticmap.openstreetmap.de/staticmap.php?center=${center}&zoom=${zoom - 1}&size=${size}&markers=${lat},${lng},lightblue1`,
+    `https://staticmap.openstreetmap.de/staticmap.php?center=${center}&zoom=${Math.max(zoom - 1, 10)}&size=${size}&markers=${lat},${lng},lightblue1`,
   ];
 }
 
