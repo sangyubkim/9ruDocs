@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -411,6 +412,22 @@ export function RestaurantTemplateScreen({
       hideSub.remove();
     };
   }, []);
+
+  useEffect(() => {
+    if (!showBlogImport && !showTemplatePicker) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (showBlogImport) {
+        setShowBlogImport(false);
+        return true;
+      }
+      if (showTemplatePicker) {
+        setShowTemplatePicker(false);
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [showBlogImport, showTemplatePicker]);
 
   const patchRestaurant = useCallback(
     (patch: Partial<RestaurantTemplateData>) => {

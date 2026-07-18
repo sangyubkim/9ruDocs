@@ -57,10 +57,35 @@ function headingTag(level, text) {
  * @returns {string} HTML
  */
 export function markdownToHtml(markdown) {
-  const src = String(markdown ?? "")
+  let src = String(markdown ?? "")
     .replace(/\r\n/g, "\n")
     .trim();
   if (!src) return "";
+
+  // 한 줄에 붙은 ✔ 맛 ★… ✔ 가격 ★… → 줄 분리 후 목록으로
+  src = src.replace(
+    /([^\n])\s*([✔✓])\s*(맛|가격|서비스|청결|재방문의사)\s*([★☆]+)/g,
+    "$1\n$2 $3 $4",
+  );
+  src = src.replace(
+    /([✔✓]\s*(?:맛|가격|서비스|청결|재방문의사)\s*[★☆]+)\s+(?=[✔✓])/g,
+    "$1\n",
+  );
+  src = src.replace(
+    /^([-*•]?\s*[✔✓]\s*(?:맛|가격|서비스|청결|재방문의사)\s*[★☆]+)\s+([^✔✓\n★☆].+)$/gm,
+    "$1\n\n$2",
+  );
+  // 별점 줄을 마크다운 리스트로
+  src = src
+    .split("\n")
+    .map((line) => {
+      const t = line.trim();
+      if (/^[✔✓]\s*(?:맛|가격|서비스|청결|재방문의사)\s*[★☆]+/.test(t)) {
+        return `- ${t}`;
+      }
+      return line;
+    })
+    .join("\n");
 
   const lines = src.split("\n");
   const out = [];
@@ -144,6 +169,14 @@ export function markdownToHtml(markdown) {
     if (list) {
       flushPara();
       listItems.push(list[1]);
+      i += 1;
+      continue;
+    }
+
+    // ✔ 맛 ★★★★★ 단독 줄 → 목록
+    if (/^[✔✓]\s*(?:맛|가격|서비스|청결|재방문의사)\s*[★☆]+/.test(trimmed)) {
+      flushPara();
+      listItems.push(trimmed);
       i += 1;
       continue;
     }

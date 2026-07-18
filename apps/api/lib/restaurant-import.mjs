@@ -55,11 +55,11 @@ const DEFAULT_SECTIONS = {
 같이 나온 반찬이나 소스와 함께 먹으면 더욱 맛있었습니다.`,
   summary: `전체적으로 만족도가 높은 식사였습니다.
 
-✔ 맛 ★★★★★
-✔ 가격 ★★★★☆
-✔ 서비스 ★★★★★
-✔ 청결 ★★★★★
-✔ 재방문의사 ★★★★★
+- ✔ 맛 ★★★★★
+- ✔ 가격 ★★★★☆
+- ✔ 서비스 ★★★★★
+- ✔ 청결 ★★★★★
+- ✔ 재방문의사 ★★★★★
 
 {region}에서 맛있는 {mainMenu}를 찾는다면
 한 번 방문해 보시는 것을 추천드립니다.`,
@@ -259,7 +259,7 @@ const JSON_SCHEMA_HINT = `JSON만 반환:
     "atmosphere": "매장 분위기 (기본정보 라벨 블록 금지)",
     "menu": "메뉴 소개 (기본정보 라벨 블록 금지)",
     "foodReview": "음식 리뷰만 (■ 위치/영업시간/연락처/주차 블록 절대 금지)",
-    "summary": "별점 포함 총평 (✔ 맛 ★★★★★ 형식)",
+    "summary": "별점 포함 총평. ✔ 맛/가격/서비스/청결/재방문의사는 각 항목마다 반드시 새 줄 (한 줄에 나열 금지)",
     "closing": "마무리 인사"
   },
   "excerpt": "2~3문장 SEO 요약",
@@ -476,10 +476,20 @@ export function dedupeTextAgainstReference(text, reference) {
 }
 
 function cleanSectionText(text, nameHints = []) {
-  return stripSectionDecorations(
+  let cleaned = stripSectionDecorations(
     stripBasicInfoBlocksFromText(stripPhotoPlaceholders(text)),
     nameHints,
   );
+  // 가로로 붙은 별점 → 세로 줄
+  cleaned = cleaned.replace(
+    /([^\n])\s*([✔✓])\s*(맛|가격|서비스|청결|재방문의사)\s*([★☆]+)/g,
+    "$1\n$2 $3 $4",
+  );
+  cleaned = cleaned.replace(
+    /([✔✓]\s*(?:맛|가격|서비스|청결|재방문의사)\s*[★☆]+)\s+(?=[✔✓])/g,
+    "$1\n",
+  );
+  return cleaned.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function stripSectionsBasicInfo(sections, nameHints = []) {

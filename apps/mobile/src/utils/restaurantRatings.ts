@@ -31,14 +31,35 @@ export function starsToText(count: number): string {
   return "★".repeat(n) + "☆".repeat(5 - n);
 }
 
+/** 한 줄에 뭉친 ✔ 맛 ★… ✔ 가격 ★… → 줄마다 분리 */
+export function expandInlineStarRatings(text: string): string {
+  let s = String(text ?? "");
+  // ✔/✓ 라벨 앞에 줄바꿈 (문장 중간 가로 나열 방지)
+  s = s.replace(
+    /([^\n])\s*([✔✓])\s*(맛|가격|서비스|청결|재방문의사)\s*([★☆]+)/g,
+    "$1\n$2 $3 $4",
+  );
+  s = s.replace(
+    /([✔✓]\s*(?:맛|가격|서비스|청결|재방문의사)\s*[★☆]+)\s+(?=[✔✓])/g,
+    "$1\n",
+  );
+  // 별점 뒤에 이어진 일반 문장 분리
+  s = s.replace(
+    /^([-*•]?\s*[✔✓]\s*(?:맛|가격|서비스|청결|재방문의사)\s*[★☆]+)\s+([^✔✓\n★☆].+)$/gm,
+    "$1\n\n$2",
+  );
+  return s.replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export function buildSummaryContent(
   ratings: RestaurantRatings,
   headText: string,
   tailText: string,
 ): string {
   const head = headText.trim() || "전체적으로 만족도가 높은 식사였습니다.";
+  // 마크다운 목록 → WP에서 세로 정렬
   const starLines = RATING_KEYS.map(
-    (k) => `✔ ${RATING_LABELS[k]} ${starsToText(ratings[k])}`,
+    (k) => `- ✔ ${RATING_LABELS[k]} ${starsToText(ratings[k])}`,
   ).join("\n");
   const tail =
     tailText.trim() ||
@@ -46,7 +67,10 @@ export function buildSummaryContent(
   return `${head}\n\n${starLines}\n\n${tail}`;
 }
 
-const STAR_LINE_RE = /^✔\s*(맛|가격|서비스|청결|재방문의사)\s*[★☆]+/m;
+const STAR_ITEM_RE =
+  /[✔✓]\s*(맛|가격|서비스|청결|재방문의사)\s*([★☆]+)/g;
+const STAR_LINE_RE =
+  /^[-*•]?\s*[✔✓]\s*(맛|가격|서비스|청결|재방문의사)\s*[★☆]+/;
 
 export function parseSummaryContent(content: string): {
   headText: string;
@@ -54,27 +78,32 @@ export function parseSummaryContent(content: string): {
   ratings: RestaurantRatings;
 } {
   const ratings = createDefaultRatings();
-  const lines = content.split("\n");
+  const expanded = expandInlineStarRatings(content);
+  const lines = expanded.split("\n");
   const starLineIndices: number[] = [];
 
   lines.forEach((line, i) => {
-    if (!STAR_LINE_RE.test(line.trim())) return;
+    const trimmed = line.trim();
+    if (!STAR_LINE_RE.test(trimmed) && !/[✔✓]\s*(?:맛|가격|서비스|청결|재방문의사)/.test(trimmed)) {
+      return;
+    }
     starLineIndices.push(i);
-    const taste = line.match(/맛\s*([★☆]+)/);
-    const price = line.match(/가격\s*([★☆]+)/);
-    const service = line.match(/서비스\s*([★☆]+)/);
-    const clean = line.match(/청결\s*([★☆]+)/);
-    const revisit = line.match(/재방문의사\s*([★☆]+)/);
-    if (taste) ratings.taste = (taste[1].match(/★/g) ?? []).length;
-    if (price) ratings.price = (price[1].match(/★/g) ?? []).length;
-    if (service) ratings.service = (service[1].match(/★/g) ?? []).length;
-    if (clean) ratings.cleanliness = (clean[1].match(/★/g) ?? []).length;
-    if (revisit) ratings.revisit = (revisit[1].match(/★/g) ?? []).length;
+    STAR_ITEM_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = STAR_ITEM_RE.exec(trimmed)) !== null) {
+      const label = m[1];
+      const stars = (m[2].match(/★/g) ?? []).length;
+      if (label === "맛") ratings.taste = stars;
+      else if (label === "가격") ratings.price = stars;
+      else if (label === "서비스") ratings.service = stars;
+      else if (label === "청결") ratings.cleanliness = stars;
+      else if (label === "재방문의사") ratings.revisit = stars;
+    }
   });
 
   if (starLineIndices.length === 0) {
     return {
-      headText: content.trim(),
+      headText: expanded.trim(),
       tailText: "",
       ratings,
     };

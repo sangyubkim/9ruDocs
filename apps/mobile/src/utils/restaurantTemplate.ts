@@ -9,6 +9,7 @@ import type {
 import {
   buildSummaryContent,
   createDefaultRatings,
+  expandInlineStarRatings,
   normalizeRatings,
   parseSummaryContent,
 } from "./restaurantRatings";
@@ -236,9 +237,11 @@ export function cleanRestaurantSectionContent(
   text: string,
   nameHints: Array<string | undefined> = [],
 ): string {
-  return stripSectionDecorations(
-    stripBasicInfoBlocksFromSection(stripPhotoPlaceholders(text)),
-    nameHints,
+  return expandInlineStarRatings(
+    stripSectionDecorations(
+      stripBasicInfoBlocksFromSection(stripPhotoPlaceholders(text)),
+      nameHints,
+    ),
   );
 }
 
@@ -310,11 +313,11 @@ const DEFAULT_FOOD_REVIEW = `가장 먼저 나온 [메뉴명].
 
 const DEFAULT_SUMMARY = `전체적으로 만족도가 높은 식사였습니다.
 
-✔ 맛 ★★★★★
-✔ 가격 ★★★★☆
-✔ 서비스 ★★★★★
-✔ 청결 ★★★★★
-✔ 재방문의사 ★★★★★
+- ✔ 맛 ★★★★★
+- ✔ 가격 ★★★★☆
+- ✔ 서비스 ★★★★★
+- ✔ 청결 ★★★★★
+- ✔ 재방문의사 ★★★★★
 
 [지역]에서 맛있는 [음식 종류]를 찾는다면
 한 번 방문해 보시는 것을 추천드립니다.`;

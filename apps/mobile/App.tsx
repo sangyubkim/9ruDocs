@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  BackHandler,
   Pressable,
   StyleSheet,
   Text,
@@ -12,7 +13,10 @@ import Constants from "expo-constants";
 import { formatNetworkError, generateBlog } from "./src/api/blog";
 import { generateRestaurantBlog } from "./src/api/restaurant";
 import { setApiClientBaseUrl } from "./src/api/client";
-import { DraftDrawer } from "./src/components/DraftDrawer";
+import {
+  DraftDrawer,
+  type DraftDrawerHandle,
+} from "./src/components/DraftDrawer";
 import { ErrorBoundary } from "./src/components/ErrorBoundary";
 import { ApiProvider, useApi } from "./src/context/ApiContext";
 import {
@@ -41,7 +45,9 @@ import { RestaurantTemplateScreen } from "./src/screens/RestaurantTemplateScreen
 function AppInner() {
   const { apiBaseUrl, apiUrlNeedsSetup } = useApi();
   const [screen, setScreen] = useState<Screen>("home");
+  const [screenHistory, setScreenHistory] = useState<Screen[]>([]);
   const [showSettings, setShowSettings] = useState(false);
+  const drawerRef = useRef<DraftDrawerHandle>(null);
   const [draftState, setDraftState] = useState<DraftListState>(() => {
     const initial = createEmptyDraft();
     return { drafts: [initial], activeId: initial.id };
@@ -53,6 +59,52 @@ function AppInner() {
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
 
   const draft = getActiveDraft(draftState);
+
+  /** 앞으로 이동 — 히스토리에 현재 화면을 쌓음 */
+  const navigateTo = useCallback((next: Screen) => {
+    setScreen((prev) => {
+      if (prev === next) return prev;
+      setScreenHistory((h) => [...h, prev]);
+      return next;
+    });
+  }, []);
+
+  /** 홈으로 리셋 (히스토리 비움) */
+  const resetToHome = useCallback(() => {
+    setScreenHistory([]);
+    setScreen("home");
+  }, []);
+
+  /** Android 뒤로가기 / UI 뒤로 — true면 앱 종료 막음 */
+  const handleHardwareBack = useCallback((): boolean => {
+    if (showSettings) {
+      setShowSettings(false);
+      return true;
+    }
+    if (drawerRef.current?.isOpen()) {
+      drawerRef.current.close();
+      return true;
+    }
+    if (screenHistory.length > 0) {
+      const prev = screenHistory[screenHistory.length - 1];
+      setScreenHistory((h) => h.slice(0, -1));
+      setScreen(prev);
+      return true;
+    }
+    if (screen !== "home") {
+      setScreen("home");
+      return true;
+    }
+    return false;
+  }, [showSettings, screenHistory, screen]);
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener(
+      "hardwareBackPress",
+      handleHardwareBack,
+    );
+    return () => sub.remove();
+  }, [handleHardwareBack]);
 
   useEffect(() => {
     setApiClientBaseUrl(apiBaseUrl);
@@ -159,13 +211,13 @@ function AppInner() {
         updatedAt: new Date().toISOString(),
       };
       await updateDraft(next);
-      setScreen("edit");
+      navigateTo("edit");
     } catch (e) {
       Alert.alert("AI 생성 실패", formatNetworkError(e));
     } finally {
       setGenerating(false);
     }
-  }, [draft, updateDraft, apiUrlNeedsSetup]);
+  }, [draft, updateDraft, apiUrlNeedsSetup, navigateTo]);
 
   const handleRestaurantGenerate = useCallback(async () => {
     const restaurant = normalizeRestaurantData(
@@ -207,21 +259,21 @@ function AppInner() {
         updatedAt: new Date().toISOString(),
       };
       await updateDraft(next);
-      setScreen("edit");
+      navigateTo("edit");
     } catch (e) {
       Alert.alert("AI 생성 실패", formatNetworkError(e));
     } finally {
       setGenerating(false);
     }
-  }, [draft, updateDraft, apiUrlNeedsSetup]);
+  }, [draft, updateDraft, apiUrlNeedsSetup, navigateTo]);
 
   const handleSelectDraft = useCallback(
     async (id: string) => {
       const next = switchActiveDraft(draftState, id);
       await persistState(next);
-      setScreen("home");
+      resetToHome();
     },
-    [draftState, persistState],
+    [draftState, persistState, resetToHome],
   );
 
   const handleToggleCheck = useCallback((id: string) => {
@@ -248,21 +300,21 @@ function AppInner() {
               const next = removeDraftsFromState(draftState, checkedIds);
               await persistState(next);
               setCheckedIds(new Set());
-              setScreen("home");
+              resetToHome();
             })();
           },
         },
       ],
     );
-  }, [checkedIds, draftState, persistState]);
+  }, [checkedIds, draftState, persistState, resetToHome]);
 
   const handleNewDraft = useCallback(async () => {
     const next = addNewDraftToState(draftState);
     await persistState(next);
     setCheckedIds(new Set());
-    setScreen("home");
-    setDrawerOpen(false);
-  }, [draftState, persistState]);
+    resetToHome();
+    drawerRef.current?.close();
+  }, [draftState, persistState, resetToHome]);
 
   const titles: Record<Screen, string> = {
     home: draft.template === "restaurant" ? "맛집 작성" : "단계 작성",
@@ -321,6 +373,7 @@ function AppInner() {
 
       <View style={styles.main}>
         <DraftDrawer
+          ref={drawerRef}
           drafts={draftState.drafts}
           activeId={draftState.activeId}
           checkedIds={checkedIds}
@@ -340,8 +393,8 @@ function AppInner() {
             onImportEnd={() => setImporting(false)}
             onGenerate={() => void handleRestaurantGenerate()}
             onOpenSettings={() => setShowSettings(true)}
-            onPreview={() => setScreen("preview")}
-            onPublish={() => setScreen("publish")}
+            onPreview={() => navigateTo("preview")}
+            onPublish={() => navigateTo("publish")}
           />
         )}
 
@@ -352,7 +405,9 @@ function AppInner() {
             generating={generating}
             onChangeDraft={(d) => void updateDraft(d)}
             onGenerate={() => void handleGenerate()}
-            onOpenPublish={() => setScreen(draft.body ? "publish" : "edit")}
+            onOpenPublish={() =>
+              navigateTo(draft.body ? "publish" : "edit")
+            }
           />
         )}
 
@@ -360,31 +415,27 @@ function AppInner() {
           <EditScreen
             draft={draft}
             onChangeDraft={(d) => void updateDraft(d)}
-            onBack={() => setScreen("home")}
-            onPreview={() => setScreen("preview")}
-            onPublish={() => setScreen("publish")}
+            onBack={() => {
+              handleHardwareBack();
+            }}
+            onPreview={() => navigateTo("preview")}
+            onPublish={() => navigateTo("publish")}
           />
         )}
         {screen === "preview" && (
           <BlogPreviewScreen
             draft={draft}
-            onEdit={() => setScreen("edit")}
-            onPublish={() => setScreen("publish")}
+            onEdit={() => navigateTo("edit")}
+            onPublish={() => navigateTo("publish")}
           />
         )}
         {screen === "publish" && (
           <PublishScreen
             draft={draft}
             onOpenSettings={() => setShowSettings(true)}
-            onBack={() =>
-              setScreen(
-                draft.template === "restaurant"
-                  ? draft.body
-                    ? "preview"
-                    : "home"
-                  : "edit",
-              )
-            }
+            onBack={() => {
+              handleHardwareBack();
+            }}
           />
         )}
         </DraftDrawer>

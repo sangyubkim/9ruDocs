@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef } from "react";
+import { memo, useCallback, useImperativeHandle, useMemo, useRef, forwardRef } from "react";
 import type { ReactNode } from "react";
 import {
   Animated,
@@ -32,6 +32,11 @@ type Props = {
   onToggleCheck: (id: string) => void;
   onDeleteChecked: () => void;
   onNewDraft: () => void;
+};
+
+export type DraftDrawerHandle = {
+  close: () => void;
+  isOpen: () => boolean;
 };
 
 const DrawerContent = memo(function DrawerContent({
@@ -128,16 +133,20 @@ const DrawerPanel = memo(function DrawerPanel({
   );
 });
 
-export function DraftDrawer({
-  drafts,
-  activeId,
-  checkedIds,
-  children,
-  onSelectDraft,
-  onToggleCheck,
-  onDeleteChecked,
-  onNewDraft,
-}: Props) {
+export const DraftDrawer = forwardRef<DraftDrawerHandle, Props>(
+  function DraftDrawer(
+    {
+      drafts,
+      activeId,
+      checkedIds,
+      children,
+      onSelectDraft,
+      onToggleCheck,
+      onDeleteChecked,
+      onNewDraft,
+    },
+    ref,
+  ) {
   const slide = useRef(new Animated.Value(CLOSED_X)).current;
   const openRef = useRef(false);
   const animatingRef = useRef(false);
@@ -296,6 +305,15 @@ export function DraftDrawer({
     animateTo(false);
   }, [animateTo]);
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      close: () => animateTo(false),
+      isOpen: () => openRef.current,
+    }),
+    [animateTo],
+  );
+
   return (
     <View style={styles.root} {...globalPan.panHandlers}>
       <DrawerContent>{children}</DrawerContent>
@@ -355,7 +373,8 @@ export function DraftDrawer({
       </Animated.View>
     </View>
   );
-}
+  },
+);
 
 const styles = StyleSheet.create({
   root: { flex: 1, position: "relative", overflow: "hidden" },
