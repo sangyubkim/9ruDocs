@@ -17,9 +17,27 @@ import {
   resolveWordPressSiteUrl,
 } from "./lib/wordpress.mjs";
 import { fetchStaticMapPng } from "./lib/static-map.mjs";
+import { describeLlmEngines } from "./lib/llm.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 loadEnv(join(__dirname, ".env"));
+
+/** Cloudways 프록시가 /apps/api prefix를 남기는 경우 제거 */
+function requestPathname(rawUrl) {
+  let pathname = String(rawUrl ?? "/").split("?")[0] || "/";
+  if (pathname.length > 1 && pathname.endsWith("/")) {
+    pathname = pathname.slice(0, -1) || "/";
+  }
+  const prefixes = ["/apps/api", "/api"];
+  for (const prefix of prefixes) {
+    if (pathname === prefix) return "/";
+    if (pathname.startsWith(`${prefix}/`)) {
+      pathname = pathname.slice(prefix.length) || "/";
+      break;
+    }
+  }
+  return pathname || "/";
+}
 
 const API_ROUTES = [
   "GET /health",
@@ -41,9 +59,20 @@ const env = {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean),
+  geminiApiKey: process.env.GEMINI_API_KEY?.trim() ?? "",
+  geminiModel: process.env.GEMINI_MODEL?.trim() ?? "gemini-2.0-flash",
   openaiApiKey: process.env.OPENAI_API_KEY?.trim() ?? "",
   openaiBaseUrl: process.env.OPENAI_BASE_URL?.trim() ?? "https://api.openai.com/v1",
   openaiModel: process.env.OPENAI_MODEL?.trim() ?? "gpt-4o-mini",
+  cursorApiKey: process.env.CURSOR_API_KEY?.trim() ?? "",
+  cursorModel: process.env.CURSOR_MODEL?.trim() ?? "composer-2.5",
+  cursorTimeoutMs: Number(process.env.CURSOR_TIMEOUT_MS) > 0
+    ? Number(process.env.CURSOR_TIMEOUT_MS)
+    : 120_000,
+  llmTimeoutMs: Number(process.env.LLM_TIMEOUT_MS) > 0
+    ? Number(process.env.LLM_TIMEOUT_MS)
+    : 90_000,
+  llmRootDir: __dirname,
   naverClientId: process.env.NAVER_CLIENT_ID?.trim() ?? "",
   naverClientSecret: process.env.NAVER_CLIENT_SECRET?.trim() ?? "",
   wpSiteUrl: process.env.WP_SITE_URL?.trim() ?? "",
@@ -89,7 +118,9 @@ function send(res, status, body, origin) {
 
 async function handle(req, res) {
   const origin = req.headers.origin ?? "";
-  const url = req.url ?? "/";
+  const rawUrl = req.url ?? "/";
+  const pathname = requestPathname(rawUrl);
+  const url = pathname + (rawUrl.includes("?") ? rawUrl.slice(rawUrl.indexOf("?")) : "");
   const method = req.method ?? "GET";
 
   if (method === "OPTIONS") {
@@ -99,7 +130,7 @@ async function handle(req, res) {
   }
 
   try {
-    if (method === "GET" && url.split("?")[0] === "/health") {
+    if (method === "GET" && pathname === "/health") {
       send(
         res,
         200,
@@ -109,7 +140,7 @@ async function handle(req, res) {
       return;
     }
 
-    if (method === "GET" && url.split("?")[0] === "/") {
+    if (method === "GET" && pathname === "/") {
       send(
         res,
         200,
@@ -122,7 +153,7 @@ async function handle(req, res) {
       return;
     }
 
-    if (method === "GET" && url.split("?")[0] === "/maps/static") {
+    if (method === "GET" && pathname === "/maps/static") {
       const u = new URL(url, `http://${req.headers.host ?? "localhost"}`);
       const lat = Number.parseFloat(u.searchParams.get("lat") ?? "");
       const lng = Number.parseFloat(u.searchParams.get("lng") ?? "");
@@ -152,56 +183,56 @@ async function handle(req, res) {
       return;
     }
 
-    if (matchRoute(url, method, "/blog/generate", "POST")) {
+    if (matchRoute(pathname, method, "/blog/generate", "POST")) {
       const body = await readBody(req);
       const result = await generateBlogPost(body, env);
       send(res, 200, result, origin);
       return;
     }
 
-    if (matchRoute(url, method, "/blog/restaurant-import/search", "POST")) {
+    if (matchRoute(pathname, method, "/blog/restaurant-import/search", "POST")) {
       const body = await readBody(req);
       const result = await searchRestaurantBlogSources(body, env);
       send(res, 200, result, origin);
       return;
     }
 
-    if (matchRoute(url, method, "/blog/restaurant-import/apply", "POST")) {
+    if (matchRoute(pathname, method, "/blog/restaurant-import/apply", "POST")) {
       const body = await readBody(req);
       const result = await importFromSelectedBlog(body, env);
       send(res, 200, result, origin);
       return;
     }
 
-    if (matchRoute(url, method, "/blog/restaurant-import", "POST")) {
+    if (matchRoute(pathname, method, "/blog/restaurant-import", "POST")) {
       const body = await readBody(req);
       const result = await importRestaurantBlog(body, env);
       send(res, 200, result, origin);
       return;
     }
 
-    if (matchRoute(url, method, "/blog/restaurant-generate", "POST")) {
+    if (matchRoute(pathname, method, "/blog/restaurant-generate", "POST")) {
       const body = await readBody(req);
       const result = await generateRestaurantBlog(body, env);
       send(res, 200, result, origin);
       return;
     }
 
-    if (matchRoute(url, method, "/wordpress/publish", "POST")) {
+    if (matchRoute(pathname, method, "/wordpress/publish", "POST")) {
       const body = await readBody(req);
       const result = await publishToWordPress(body, env);
       send(res, 200, result, origin);
       return;
     }
 
-    if (matchRoute(url, method, "/wordpress/verify", "POST")) {
+    if (matchRoute(pathname, method, "/wordpress/verify", "POST")) {
       const body = await readBody(req);
       const result = await verifyWordPressCredentials(body, env);
       send(res, 200, result, origin);
       return;
     }
 
-    if (matchRoute(url, method, "/wordpress/media", "POST")) {
+    if (matchRoute(pathname, method, "/wordpress/media", "POST")) {
       const body = await readBody(req);
       const resolved = resolveWordPressSiteUrl(body?.siteUrl, env.wpSiteUrl);
       if (!resolved.ok) {
@@ -211,7 +242,7 @@ async function handle(req, res) {
       const username = body?.username?.trim() || env.wpUsername;
       const appPassword = body?.appPassword?.trim() || env.wpAppPassword;
       if (!username || !appPassword) {
-        send(res, 400, { error: "WordPress credentials missing" }, origin);
+        send(res, 400, { error: "WordPress credentials required" }, origin);
         return;
       }
       const media = await uploadMedia(
@@ -251,7 +282,7 @@ server.listen(env.port, () => {
   for (const route of API_ROUTES) {
     console.log(`  ${route}`);
   }
-  console.log(`OpenAI: ${env.openaiApiKey ? "configured" : "fallback mode"}`);
+  console.log(`LLM: ${describeLlmEngines(env)}`);
   console.log(`WordPress: ${env.wpSiteUrl ? "configured" : "not configured"}`);
   console.log(`CORS: ${env.corsOrigins.join(", ")}`);
 });

@@ -1,4 +1,4 @@
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 
 import { getApiClientBaseUrl } from "../api/client";
 import { buildStaticMapUrlCandidates } from "./maps";

@@ -35,9 +35,13 @@ export function starsToText(count: number): string {
 export function expandInlineStarRatings(text: string): string {
   let s = String(text ?? "");
   // ✔/✓ 라벨 앞에 줄바꿈 (문장 중간 가로 나열 방지)
+  // 단, 목록 마커(-/*/•)만 앞에 있으면 분리하지 않음 → 단독 "-" 줄 방지
   s = s.replace(
     /([^\n])\s*([✔✓])\s*(맛|가격|서비스|청결|재방문의사)\s*([★☆]+)/g,
-    "$1\n$2 $3 $4",
+    (full, before: string, check: string, label: string, stars: string) => {
+      if (/^[-*•]$/.test(before)) return full;
+      return `${before}\n${check} ${label} ${stars}`;
+    },
   );
   s = s.replace(
     /([✔✓]\s*(?:맛|가격|서비스|청결|재방문의사)\s*[★☆]+)\s+(?=[✔✓])/g,
@@ -57,9 +61,9 @@ export function buildSummaryContent(
   tailText: string,
 ): string {
   const head = headText.trim() || "전체적으로 만족도가 높은 식사였습니다.";
-  // 마크다운 목록 → WP에서 세로 정렬
+  // 앞에 "-" 없이 줄 단위로 — HTML/미리보기에서 <ul><li> 또는 줄바꿈으로 세로 정렬
   const starLines = RATING_KEYS.map(
-    (k) => `- ✔ ${RATING_LABELS[k]} ${starsToText(ratings[k])}`,
+    (k) => `✔ ${RATING_LABELS[k]} ${starsToText(ratings[k])}`,
   ).join("\n");
   const tail =
     tailText.trim() ||

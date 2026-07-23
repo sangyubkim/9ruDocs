@@ -20,6 +20,8 @@ type Props = {
   onRemove?: () => void;
   placeholder?: string;
   minHeight?: number;
+  /** 도입부 등 — 사진 필수 표시 */
+  requireImage?: boolean;
 };
 
 export function SectionInputCard({
@@ -31,6 +33,7 @@ export function SectionInputCard({
   onRemove,
   placeholder,
   minHeight = 120,
+  requireImage = false,
 }: Props) {
   const [editing, setEditing] = useState(true);
 
@@ -59,13 +62,27 @@ export function SectionInputCard({
     <View style={styles.card}>
       <View style={styles.labelRow}>
         <Text style={styles.label}>{label}</Text>
+        {requireImage ? (
+          <Text style={styles.requiredBadge}>사진 필수</Text>
+        ) : null}
       </View>
+
+      {requireImage && images.length === 0 ? (
+        <Text style={styles.requiredHint}>
+          대표 이미지로 쓰입니다. 미리보기·WordPress 등록 전에 사진을 첨부하세요.
+        </Text>
+      ) : null}
 
       {images.length > 0 ? (
         <View style={styles.imageGrid}>
           {images.map((uri, i) => (
             <View key={`${uri}-${i}`} style={styles.imageWrap}>
               <Image source={{ uri }} style={styles.thumb} />
+              {i === 0 && requireImage ? (
+                <View style={styles.featuredBadge}>
+                  <Text style={styles.featuredBadgeText}>대표</Text>
+                </View>
+              ) : null}
               <Pressable style={styles.imageDel} onPress={() => removeImage(i)}>
                 <Text style={styles.imageDelText}>✕</Text>
               </Pressable>
@@ -87,14 +104,12 @@ export function SectionInputCard({
         >
           <Text style={styles.toolBtnText}>{editing ? "👁 미리보기" : "✏️ 편집"}</Text>
         </Pressable>
-        {!onRemove ? (
-          <Pressable
-            style={styles.toolBtnDanger}
-            onPress={() => onChangeContent("")}
-          >
-            <Text style={styles.toolBtnDangerText}>내용 비우기</Text>
-          </Pressable>
-        ) : null}
+        <Pressable
+          style={styles.toolBtnDanger}
+          onPress={() => onChangeContent("")}
+        >
+          <Text style={styles.toolBtnDangerText}>내용 비우기</Text>
+        </Pressable>
       </View>
 
       {editing ? (
@@ -102,6 +117,7 @@ export function SectionInputCard({
           <TextInput
             style={[styles.input, { minHeight }]}
             multiline
+            scrollEnabled={false}
             placeholder={placeholder}
             value={content}
             onChangeText={onChangeContent}
@@ -152,6 +168,36 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#0f172a",
     flex: 1,
+  },
+  requiredBadge: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#b91c1c",
+    backgroundColor: "#fef2f2",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    overflow: "hidden",
+  },
+  requiredHint: {
+    fontSize: 12,
+    color: "#b91c1c",
+    marginBottom: 8,
+    lineHeight: 18,
+  },
+  featuredBadge: {
+    position: "absolute",
+    left: 2,
+    bottom: 2,
+    backgroundColor: "rgba(37, 99, 235, 0.9)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  featuredBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "700",
   },
   footerDel: {
     marginTop: 12,

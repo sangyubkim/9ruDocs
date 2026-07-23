@@ -4,6 +4,7 @@ import {
   stripHtml,
 } from "./blog-search.mjs";
 import { fetchBlogText, filterBlogNoise } from "./blog-fetch.mjs";
+import { completeJson, hasLlmConfigured } from "./llm.mjs";
 
 const DEFAULT_BASIC = {
   name: "",
@@ -213,34 +214,9 @@ function fallbackImport(body, meta = {}) {
   };
 }
 
-async function callOpenAiJson(env, system, user) {
-  const res = await fetch(`${env.openaiBaseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.openaiApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: env.openaiModel,
-      temperature: 0.65,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
-    signal: AbortSignal.timeout(90_000),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`OpenAI error ${res.status}: ${errText.slice(0, 200)}`);
-  }
-
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("Empty OpenAI response");
-  return JSON.parse(content);
+async function callLlmJson(env, system, user) {
+  const { data } = await completeJson(env, system, user, { temperature: 0.65 });
+  return data;
 }
 
 const JSON_SCHEMA_HINT = `JSON만 반환:
@@ -284,7 +260,7 @@ async function importWithOpenAiOnly(body, env) {
 
 ${JSON_SCHEMA_HINT}`;
 
-  const parsed = await callOpenAiJson(env, system, user);
+  const parsed = await callLlmJson(env, system, user);
   return formatOpenAiResult(parsed, vars, {
     sources: [],
     importMeta: {
@@ -871,7 +847,7 @@ ${blogsBlock}
 
 ${JSON_SCHEMA_HINT}`;
 
-  const parsed = await callOpenAiJson(env, system, user);
+  const parsed = await callLlmJson(env, system, user);
 
   const simCount = collected.filter((c) => c.matchedSort === "sim").length;
   const dateCount = collected.filter((c) => c.matchedSort === "date").length;
@@ -1035,7 +1011,7 @@ async function importSingleCollectedBlog(body, collected, env, searchedQuery) {
     throw new Error("선택한 블로그 본문을 가져오지 못했습니다.");
   }
 
-  if (env.openaiApiKey) {
+  if (hasLlmConfigured(env)) {
     try {
       return await optimizeWithCollectedBlogs(body, collected, env, searchedQuery);
     } catch {
@@ -1109,7 +1085,7 @@ export async function importRestaurantBlog(body, env) {
     searchError = e instanceof Error ? e.message : String(e);
   }
 
-  if (collected.length > 0 && env.openaiApiKey) {
+  if (collected.length > 0 && hasLlmConfigured(env)) {
     try {
       return await optimizeWithCollectedBlogs(
         body,
@@ -1126,7 +1102,7 @@ export async function importRestaurantBlog(body, env) {
     return importFromCollectedSnippets(body, collected, searchedQuery);
   }
 
-  if (env.openaiApiKey) {
+  if (hasLlmConfigured(env)) {
     try {
       return await importWithOpenAiOnly(body, env);
     } catch {

@@ -1,3 +1,5 @@
+import { completeJson, hasLlmConfigured } from "./llm.mjs";
+
 /** Google Maps URL (API 키 불필요) */
 export function buildGoogleSearchUrl(query) {
   const q = encodeURIComponent(String(query ?? "").trim());
@@ -105,8 +107,8 @@ export async function generateBlogPost(body, env) {
 
   const writingContext = buildWritingContext(body, sorted);
 
-  if (env.openaiApiKey) {
-    return generateWithOpenAi(sorted, writingContext, env);
+  if (hasLlmConfigured(env)) {
+    return generateWithLlm(sorted, writingContext, env);
   }
 
   return generateFallback(sorted, writingContext);
@@ -134,7 +136,7 @@ function locationMarkdown(loc) {
   return `\n\n📍 [${text}](${url})\n`;
 }
 
-async function generateWithOpenAi(steps, ctx, env) {
+async function generateWithLlm(steps, ctx, env) {
   const stepText = steps.map((s, i) => formatStepForPrompt(s, i)).join("\n");
   const personaLine = buildPersonaInstruction(ctx);
 
@@ -157,33 +159,9 @@ JSON만 반환하세요:
   "suggestedTags": ["태그1", "태그2"]
 }`;
 
-  const res = await fetch(`${env.openaiBaseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.openaiApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: env.openaiModel,
-      temperature: 0.7,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
+  const { data: parsed } = await completeJson(env, system, user, {
+    temperature: 0.7,
   });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`OpenAI error ${res.status}: ${errText.slice(0, 200)}`);
-  }
-
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("Empty OpenAI response");
-
-  const parsed = JSON.parse(content);
   return {
     title: String(parsed.title ?? "제목 없음"),
     body: String(parsed.body ?? ""),

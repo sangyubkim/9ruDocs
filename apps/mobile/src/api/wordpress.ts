@@ -150,10 +150,27 @@ export async function verifyWordPress(
 
   let json: VerifyWordPressResponse & VerifyErrorBody;
   try {
-    json = (await res.json()) as VerifyWordPressResponse & VerifyErrorBody;
-  } catch {
+    const text = await res.text();
+    if (!text.trim()) {
+      throw new Error(
+        `9ruDocs API 응답이 비어 있습니다 (HTTP ${res.status}).\n` +
+          "API 주소가 올바른지(예: …/apps/api) 확인하고, API를 재시작했는지 확인하세요.",
+      );
+    }
+    try {
+      json = JSON.parse(text) as VerifyWordPressResponse & VerifyErrorBody;
+    } catch {
+      const snippet = text.replace(/\s+/g, " ").slice(0, 160);
+      throw new Error(
+        `9ruDocs API 응답을 해석할 수 없습니다 (HTTP ${res.status}).\n` +
+          "API 주소가 올바른지(예: …/apps/api) 확인하세요.\n" +
+          `응답 미리보기: ${snippet}`,
+      );
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("API")) throw e;
     throw new Error(
-      "9ruDocs API 응답을 해석할 수 없습니다. API 주소가 PC의 9ruDocs 서버인지, API를 재시작했는지 확인하세요.",
+      "9ruDocs API 응답을 해석할 수 없습니다. API 주소가 올바른지(예: …/apps/api) 확인하세요.",
     );
   }
 
@@ -185,8 +202,25 @@ export async function publishToWordPress(
   }
   let json: PublishResponse & { error?: string };
   try {
-    json = (await res.json()) as PublishResponse & { error?: string };
-  } catch {
+    const text = await res.text();
+    if (!text.trim()) {
+      throw new Error(
+        `9ruDocs API 응답이 비어 있습니다 (HTTP ${res.status}).\n` +
+          "사진이 많거나 크면 서버/프록시 한도를 넘을 수 있습니다. 사진을 줄인 뒤 다시 시도하세요.",
+      );
+    }
+    try {
+      json = JSON.parse(text) as PublishResponse & { error?: string };
+    } catch {
+      const snippet = text.replace(/\s+/g, " ").slice(0, 160);
+      throw new Error(
+        `9ruDocs API 응답을 해석할 수 없습니다 (HTTP ${res.status}).\n` +
+          "API 주소가 올바른지(예: …/apps/api) 확인하고, 사진 용량을 줄인 뒤 다시 시도하세요.\n" +
+          `응답 미리보기: ${snippet}`,
+      );
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("API")) throw e;
     throw new Error(
       "9ruDocs API 응답을 해석할 수 없습니다. API 주소가 올바른지(예: …/apps/api) 확인하세요.",
     );

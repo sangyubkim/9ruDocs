@@ -63,9 +63,13 @@ export function markdownToHtml(markdown) {
   if (!src) return "";
 
   // 한 줄에 붙은 ✔ 맛 ★… ✔ 가격 ★… → 줄 분리 후 목록으로
+  // 목록 마커(-/*/•)만 앞에 있으면 분리하지 않음 (단독 "-" 줄 방지)
   src = src.replace(
     /([^\n])\s*([✔✓])\s*(맛|가격|서비스|청결|재방문의사)\s*([★☆]+)/g,
-    "$1\n$2 $3 $4",
+    (full, before, check, label, stars) => {
+      if (/^[-*•]$/.test(before)) return full;
+      return `${before}\n${check} ${label} ${stars}`;
+    },
   );
   src = src.replace(
     /([✔✓]\s*(?:맛|가격|서비스|청결|재방문의사)\s*[★☆]+)\s+(?=[✔✓])/g,

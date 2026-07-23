@@ -27,7 +27,7 @@ export function readBody(req, maxBytes = 12 * 1024 * 1024) {
   });
 }
 
-export function matchRoute(url, method, path, expectedMethod) {
-  const pathname = url.split("?")[0];
+export function matchRoute(urlOrPath, method, path, expectedMethod) {
+  const pathname = String(urlOrPath ?? "").split("?")[0] || "/";
   return method === expectedMethod && pathname === path;
 }

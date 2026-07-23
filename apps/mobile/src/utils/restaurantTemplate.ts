@@ -313,11 +313,11 @@ const DEFAULT_FOOD_REVIEW = `가장 먼저 나온 [메뉴명].
 
 const DEFAULT_SUMMARY = `전체적으로 만족도가 높은 식사였습니다.
 
-- ✔ 맛 ★★★★★
-- ✔ 가격 ★★★★☆
-- ✔ 서비스 ★★★★★
-- ✔ 청결 ★★★★★
-- ✔ 재방문의사 ★★★★★
+✔ 맛 ★★★★★
+✔ 가격 ★★★★☆
+✔ 서비스 ★★★★★
+✔ 청결 ★★★★★
+✔ 재방문의사 ★★★★★
 
 [지역]에서 맛있는 [음식 종류]를 찾는다면
 한 번 방문해 보시는 것을 추천드립니다.`;
@@ -422,35 +422,21 @@ export function normalizeRestaurantData(
   const basicName =
     sanitizeRestaurantFieldValue(raw.basicInfo.name, "restaurantName") ||
     restaurantName;
-  const nameHints = [restaurantName, basicName];
 
+  // 편집 중에는 섹션 content를 clean/dedupe 하지 않음.
+  // (매 키입력마다 upsert→normalize가 content를 덮어써 본문이 비어 보이는 원인)
+  // 미리보기/발행용 정리는 restaurantToMarkdown에서만 수행.
   let sections = raw.sections.map((s) =>
     s.key === "summary"
       ? {
           ...s,
           content: buildSummaryContent(ratings, summaryHead, summaryTail),
         }
-      : {
-          ...s,
-          content: cleanRestaurantSectionContent(s.content, nameHints),
-        },
+      : s,
   );
 
   if (!sections.some((s) => s.key === "foodReview")) {
     sections = [...sections, createFoodReviewSection()];
-  }
-
-  const introContent =
-    sections.find((s) => s.key === "intro")?.content.trim() ?? "";
-  if (introContent) {
-    sections = sections.map((s) =>
-      s.key === "foodReview"
-        ? {
-            ...s,
-            content: dedupeTextAgainstReference(s.content, introContent),
-          }
-        : s,
-    );
   }
 
   const parkingImages = Array.isArray(raw.parkingImages)
@@ -587,7 +573,8 @@ export function formatBasicInfoMarkdown(
   if (info.phone.trim()) lines.push(`- **연락처:** ${info.phone.trim()}`);
   if (info.parking.trim()) lines.push(`- **주차:** ${info.parking.trim()}`);
   for (const uri of parkingImages) {
-    if (/^https?:\/\//i.test(uri)) lines.push("", `![주차](${uri})`);
+    const u = String(uri ?? "").trim();
+    if (u) lines.push("", `![주차](${u})`);
   }
   if (info.reservation.trim()) {
     lines.push(`- **예약:** ${info.reservation.trim()}`);
@@ -621,10 +608,21 @@ function appendSectionParts(
     // 음식 리뷰 2개 이상일 때만 번호 헤딩
     parts.push(`#### 🥢 ${label}`, "");
   }
-  parts.push(content);
+  const imageLines: string[] = [];
   for (const uri of images) {
-    if (/^https?:\/\//i.test(uri)) {
-      parts.push("", `![${label}](${uri})`);
+    const u = String(uri ?? "").trim();
+    // 미리보기용 local(file:// 등) 포함 — Publish 시 http URL로 치환
+    if (u) {
+      imageLines.push(`![${label}](${u})`);
+    }
+  }
+  // 도입부: 사진 → 본문 순 (WP 대표이미지·요약글과 맞춤)
+  if (key === "intro" && imageLines.length > 0) {
+    parts.push(...imageLines, "", content);
+  } else {
+    parts.push(content);
+    for (const line of imageLines) {
+      parts.push("", line);
     }
   }
   parts.push("");
@@ -691,6 +689,52 @@ export function restaurantToMarkdown(data: RestaurantTemplateData): string {
 export function canImportRestaurant(data: RestaurantTemplateData): boolean {
   const { region, restaurantName } = effectiveRestaurantFields(data);
   return region.length >= 1 && restaurantName.length >= 1;
+}
+
+/** 도입부 본문 (정리된 텍스트) — WP 요약글(excerpt)로 사용 */
+export function getIntroExcerpt(data: RestaurantTemplateData): string {
+  const intro = data.sections.find((s) => s.key === "intro");
+  if (!intro) return "";
+  return cleanRestaurantSectionContent(intro.content, [
+    data.restaurantName,
+    data.basicInfo?.name,
+  ]).trim();
+}
+
+/** 도입부 첫 사진 — WP 대표 이미지로 사용 */
+export function getIntroFeaturedImageUri(
+  data: RestaurantTemplateData,
+): string | null {
+  const intro = data.sections.find((s) => s.key === "intro");
+  const uri = String(intro?.images?.[0] ?? "").trim();
+  return uri || null;
+}
+
+export type RestaurantIntroValidation = {
+  ok: boolean;
+  message?: string;
+};
+
+/** 미리보기·WordPress 등록 전: 도입부 내용·사진 필수 */
+export function validateRestaurantIntro(
+  data: RestaurantTemplateData,
+): RestaurantIntroValidation {
+  const excerpt = getIntroExcerpt(data);
+  if (!excerpt) {
+    return {
+      ok: false,
+      message:
+        "도입부 내용을 입력해 주세요. 도입부 글이 없으면 미리보기·WordPress 등록을 할 수 없습니다.",
+    };
+  }
+  if (!getIntroFeaturedImageUri(data)) {
+    return {
+      ok: false,
+      message:
+        "도입부 사진을 첨부해 주세요. 도입부 사진은 필수이며 WordPress 대표 이미지·요약글에 사용됩니다.",
+    };
+  }
+  return { ok: true };
 }
 
 export function getSectionByKey(

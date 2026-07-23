@@ -19,8 +19,11 @@ import {
 import { useApi } from "../context/ApiContext";
 import { imageUriToBase64 } from "../utils/imageBase64";
 import {
+  getIntroExcerpt,
+  getIntroFeaturedImageUri,
   normalizeRestaurantData,
   restaurantToMarkdown,
+  validateRestaurantIntro,
 } from "../utils/restaurantTemplate";
 
 type Props = {
@@ -28,6 +31,18 @@ type Props = {
   onBack: () => void;
   onOpenSettings?: () => void;
 };
+
+/** 마크다운 본문에서 http가 아닌 이미지 URI를 등장 순서대로 수집 */
+function collectLocalImageUrisFromMarkdown(md: string): string[] {
+  const uris: string[] = [];
+  const re = /!\[[^\]]*\]\(([^)]+)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(md)) !== null) {
+    const u = String(m[1] ?? "").trim();
+    if (u && !/^https?:\/\//i.test(u)) uris.push(u);
+  }
+  return uris;
+}
 
 export function PublishScreen({ draft, onBack, onOpenSettings }: Props) {
   const { apiUrlNeedsSetup } = useApi();
@@ -56,30 +71,57 @@ export function PublishScreen({ draft, onBack, onOpenSettings }: Props) {
       return;
     }
 
+    const restaurant =
+      draft.template === "restaurant" && draft.restaurant
+        ? normalizeRestaurantData(draft.restaurant)
+        : null;
+    if (restaurant) {
+      const check = validateRestaurantIntro(restaurant);
+      if (!check.ok) {
+        Alert.alert("도입부 확인", check.message ?? "도입부를 확인해 주세요.");
+        return;
+      }
+    }
+
     setPublishing(true);
     try {
+      const content = restaurant
+        ? restaurantToMarkdown(restaurant)
+        : draft.body;
+
+      const excerpt = restaurant
+        ? getIntroExcerpt(restaurant)
+        : draft.excerpt.trim();
+
       const images = [];
+      // 도입부 사진을 맨 앞에 올려 WP featured_media = mediaIds[0] 보장
+      const introUri = restaurant ? getIntroFeaturedImageUri(restaurant) : null;
+      const localInBody = collectLocalImageUrisFromMarkdown(content);
+      const orderedUris: string[] = [];
+      if (introUri) orderedUris.push(introUri);
+      for (const uri of localInBody) {
+        if (!orderedUris.includes(uri)) orderedUris.push(uri);
+      }
       for (const step of draft.steps) {
         if (!step.imageUri) continue;
-        images.push(await imageUriToBase64(step.imageUri));
+        if (orderedUris.includes(step.imageUri)) continue;
+        orderedUris.push(step.imageUri);
       }
-
-      const content =
-        draft.template === "restaurant" && draft.restaurant
-          ? restaurantToMarkdown(normalizeRestaurantData(draft.restaurant))
-          : draft.body;
+      for (const uri of orderedUris) {
+        images.push(await imageUriToBase64(uri));
+      }
 
       const res = await publishToWordPress({
         title: draft.title,
         content,
-        excerpt: draft.excerpt,
+        excerpt,
         status: asDraft ? "draft" : "publish",
         tags: draft.tags,
         images,
         seo: {
-          metaDescription: draft.excerpt,
+          metaDescription: excerpt,
           yoastTitle: draft.title,
-          yoastDescription: draft.excerpt,
+          yoastDescription: excerpt,
         },
       });
 
@@ -101,6 +143,15 @@ export function PublishScreen({ draft, onBack, onOpenSettings }: Props) {
     }
   };
 
+  const restaurantImageCount =
+    draft.template === "restaurant" && draft.restaurant
+      ? collectLocalImageUrisFromMarkdown(
+          restaurantToMarkdown(normalizeRestaurantData(draft.restaurant)),
+        ).length
+      : 0;
+  const stepImageCount = draft.steps.filter((s) => s.imageUri).length;
+  const imageCount = restaurantImageCount + stepImageCount;
+
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={styles.content}>
       <Text style={styles.title}>WordPress 등록</Text>
@@ -118,9 +169,23 @@ export function PublishScreen({ draft, onBack, onOpenSettings }: Props) {
 
       <View style={styles.summary}>
         <Text style={styles.summaryLine}>제목: {draft.title || "(없음)"}</Text>
-        <Text style={styles.summaryLine}>태그: {draft.tags.join(", ") || "(없음)"}</Text>
         <Text style={styles.summaryLine}>
-          이미지: {draft.steps.filter((s) => s.imageUri).length}장 → featured + 본문
+          태그: {draft.tags.join(", ") || "(없음)"}
+        </Text>
+        <Text style={styles.summaryLine}>
+          이미지: {imageCount}장
+          {restaurantImageCount > 0
+            ? ` (섹션·주차 ${restaurantImageCount}`
+            : ""}
+          {restaurantImageCount > 0 && stepImageCount > 0 ? ", " : ""}
+          {stepImageCount > 0 && restaurantImageCount === 0
+            ? " (단계)"
+            : stepImageCount > 0
+              ? `단계 ${stepImageCount})`
+              : restaurantImageCount > 0
+                ? ")"
+                : ""}
+          {" → 본문 삽입 / 대표"}
         </Text>
       </View>
 
@@ -138,7 +203,9 @@ export function PublishScreen({ draft, onBack, onOpenSettings }: Props) {
             </Text>
           ) : null}
           {result.featuredMediaId ? (
-            <Text style={styles.sub}>대표 이미지 ID: {result.featuredMediaId}</Text>
+            <Text style={styles.sub}>
+              대표 이미지 ID: {result.featuredMediaId}
+            </Text>
           ) : null}
           <Pressable onPress={() => void Linking.openURL(result.link)}>
             <Text style={styles.link}>{result.link}</Text>

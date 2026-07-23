@@ -1,5 +1,26 @@
 import { Alert } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
+
+/** 긴 변 기준 — WP/프록시 용량을 넘지 않도록 등록 시 축소 */
+const MAX_IMAGE_EDGE = 1600;
+const COMPRESS_QUALITY = 0.7;
+
+async function compressPickedImage(uri: string): Promise<string> {
+  try {
+    const result = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: MAX_IMAGE_EDGE } }],
+      {
+        compress: COMPRESS_QUALITY,
+        format: ImageManipulator.SaveFormat.JPEG,
+      },
+    );
+    return result.uri || uri;
+  } catch {
+    return uri;
+  }
+}
 
 async function saveToGallery(uri: string): Promise<void> {
   try {
@@ -20,14 +41,14 @@ export async function pickImageFromCamera(): Promise<string | null> {
   }
 
   const result = await ImagePicker.launchCameraAsync({
-    quality: 0.85,
+    quality: COMPRESS_QUALITY,
     allowsEditing: true,
   });
 
   if (result.canceled || !result.assets[0]?.uri) return null;
-  const uri = result.assets[0].uri;
-  await saveToGallery(uri);
-  return uri;
+  const compressed = await compressPickedImage(result.assets[0].uri);
+  await saveToGallery(compressed);
+  return compressed;
 }
 
 export async function pickImageFromGallery(): Promise<string | null> {
@@ -38,13 +59,13 @@ export async function pickImageFromGallery(): Promise<string | null> {
   }
 
   const result = await ImagePicker.launchImageLibraryAsync({
-    quality: 0.85,
+    quality: COMPRESS_QUALITY,
     allowsEditing: true,
     mediaTypes: ["images"],
   });
 
   if (result.canceled || !result.assets[0]?.uri) return null;
-  return result.assets[0].uri;
+  return compressPickedImage(result.assets[0].uri);
 }
 
 export async function pickImage(useCamera: boolean): Promise<string | null> {

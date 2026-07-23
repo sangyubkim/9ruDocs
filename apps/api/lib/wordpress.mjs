@@ -322,9 +322,33 @@ export async function publishToWordPress(body, env) {
 
   let finalContent = buildSeoContent({ content });
 
+  // 본문의 non-http 이미지(file:// 등)를 업로드 URL로 순서대로 치환
+  let mediaUrlIdx = 0;
   if (mediaUrls.length) {
-    const imgs = mediaUrls.map((u) => `![step](${u})`).join("\n\n");
-    finalContent = `${finalContent}\n\n#### 이미지\n\n${imgs}`;
+    const before = finalContent;
+    finalContent = finalContent.replace(
+      /!\[([^\]]*)\]\(([^)]+)\)/g,
+      (match, alt, url) => {
+        const u = String(url).trim();
+        if (/^https?:\/\//i.test(u)) return match;
+        if (mediaUrlIdx < mediaUrls.length) {
+          const uploaded = mediaUrls[mediaUrlIdx++];
+          return `![${alt}](${uploaded})`;
+        }
+        return "";
+      },
+    );
+    const replacedInline = mediaUrlIdx > 0 || before !== finalContent;
+
+    // 치환에 쓰이지 않은 나머지(기본 템플릿 step 사진 등)는 하단에 추가
+    const leftover = mediaUrls.slice(mediaUrlIdx);
+    if (leftover.length) {
+      const imgs = leftover.map((u) => `![step](${u})`).join("\n\n");
+      finalContent = `${finalContent}\n\n#### 이미지\n\n${imgs}`;
+    } else if (!replacedInline && mediaUrls.length) {
+      const imgs = mediaUrls.map((u) => `![step](${u})`).join("\n\n");
+      finalContent = `${finalContent}\n\n#### 이미지\n\n${imgs}`;
+    }
   }
 
   // WordPress는 HTML을 기대 — 마크다운 그대로면 링크·글꼴이 깨짐 (post-3 스타일 HTML)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -45,6 +45,7 @@ import {
   canImportRestaurant,
   createEmptyRestaurantData,
   effectiveRestaurantFields,
+  getIntroExcerpt,
   initRestaurantTemplateData,
   patchRestaurantSection,
   normalizeRestaurantData,
@@ -53,6 +54,7 @@ import {
   restaurantToMarkdown,
   RESTAURANT_FIELD_PREFIXES,
   sanitizeRestaurantFieldValue,
+  validateRestaurantIntro,
 } from "../utils/restaurantTemplate";
 import { parseSummaryContent } from "../utils/restaurantRatings";
 
@@ -395,6 +397,9 @@ export function RestaurantTemplateScreen({
   const data = normalizeRestaurantData(
     draft.restaurant ?? createEmptyRestaurantData(),
   );
+  /** 연속 입력 시 stale draft/data로 섹션이 덮이지 않도록 최신 restaurant 유지 */
+  const restaurantRef = useRef(data);
+  restaurantRef.current = data;
 
   useEffect(() => {
     const showEvent =
@@ -431,7 +436,11 @@ export function RestaurantTemplateScreen({
 
   const patchRestaurant = useCallback(
     (patch: Partial<RestaurantTemplateData>) => {
-      const next: RestaurantTemplateData = { ...data, ...patch };
+      const next: RestaurantTemplateData = {
+        ...restaurantRef.current,
+        ...patch,
+      };
+      restaurantRef.current = next;
       const body = restaurantToMarkdown(next);
       onChangeDraft({
         ...draft,
@@ -441,20 +450,22 @@ export function RestaurantTemplateScreen({
         updatedAt: new Date().toISOString(),
       });
     },
-    [data, draft, onChangeDraft],
+    [draft, onChangeDraft],
   );
 
   const patchTitle = useCallback(
     (title: string) => {
       const clean = sanitizeRestaurantFieldValue(title, "restaurantName");
+      const nextRestaurant = { ...restaurantRef.current, restaurantName: clean };
+      restaurantRef.current = nextRestaurant;
       onChangeDraft({
         ...draft,
         title: clean,
-        restaurant: { ...data, restaurantName: clean },
+        restaurant: nextRestaurant,
         updatedAt: new Date().toISOString(),
       });
     },
-    [data, draft, onChangeDraft],
+    [draft, onChangeDraft],
   );
 
   const titleValue = sanitizeRestaurantFieldValue(
@@ -557,7 +568,7 @@ export function RestaurantTemplateScreen({
         title: result.title,
         restaurant: nextData,
         body,
-        excerpt: result.excerpt,
+        excerpt: getIntroExcerpt(nextData) || result.excerpt,
         tags: result.suggestedTags,
         updatedAt: new Date().toISOString(),
       });
@@ -593,15 +604,26 @@ export function RestaurantTemplateScreen({
 
   const syncBody = useCallback(
     (nextData: RestaurantTemplateData) => {
+      restaurantRef.current = nextData;
       onChangeDraft({
         ...draft,
         restaurant: nextData,
         body: restaurantToMarkdown(nextData),
+        excerpt: getIntroExcerpt(nextData),
         updatedAt: new Date().toISOString(),
       });
     },
     [draft, onChangeDraft],
   );
+
+  const ensureIntroReady = useCallback((): boolean => {
+    const check = validateRestaurantIntro(restaurantRef.current);
+    if (!check.ok) {
+      Alert.alert("도입부 확인", check.message ?? "도입부를 확인해 주세요.");
+      return false;
+    }
+    return true;
+  }, []);
 
   const footerPad = Math.max(insets.bottom, 20) + 8;
   const scrollBottomPad = keyboardVisible
@@ -702,13 +724,13 @@ export function RestaurantTemplateScreen({
                   tailText={data.summaryTail}
                   ratings={data.ratings}
                   onChangeHead={(summaryHead) => {
-                    syncBody(patchSummary(data, { summaryHead }));
+                    syncBody(patchSummary(restaurantRef.current, { summaryHead }));
                   }}
                   onChangeTail={(summaryTail) => {
-                    syncBody(patchSummary(data, { summaryTail }));
+                    syncBody(patchSummary(restaurantRef.current, { summaryTail }));
                   }}
                   onChangeRatings={(ratings) => {
-                    syncBody(patchSummary(data, { ratings }));
+                    syncBody(patchSummary(restaurantRef.current, { ratings }));
                   }}
                 />
               );
@@ -725,26 +747,26 @@ export function RestaurantTemplateScreen({
                       images={foodSection.images}
                       onChangeContent={(content) => {
                         syncBody(
-                          patchRestaurantSection(data, foodSection.id, {
+                          patchRestaurantSection(restaurantRef.current, foodSection.id, {
                             content,
                           }),
                         );
                       }}
                       onChangeImages={(images) => {
                         syncBody(
-                          patchRestaurantSection(data, foodSection.id, {
+                          patchRestaurantSection(restaurantRef.current, foodSection.id, {
                             images,
                           }),
                         );
                       }}
                       onRemove={() => {
-                        syncBody(removeFoodReviewSection(data, foodSection.id));
+                        syncBody(removeFoodReviewSection(restaurantRef.current, foodSection.id));
                       }}
                     />
                   ))}
                   <Pressable
                     style={styles.addFoodReviewBtn}
-                    onPress={() => syncBody(addFoodReviewSection(data))}
+                    onPress={() => syncBody(addFoodReviewSection(restaurantRef.current))}
                   >
                     <Text style={styles.addFoodReviewText}>
                       + 음식 리뷰 추가
@@ -760,14 +782,19 @@ export function RestaurantTemplateScreen({
                   label={RESTAURANT_SECTION_LABELS[section.key]}
                   content={section.content}
                   images={section.images}
+                  requireImage={key === "intro"}
                   onChangeContent={(content) => {
                     syncBody(
-                      patchRestaurantSection(data, section.id, { content }),
+                      patchRestaurantSection(restaurantRef.current, section.id, {
+                        content,
+                      }),
                     );
                   }}
                   onChangeImages={(images) => {
                     syncBody(
-                      patchRestaurantSection(data, section.id, { images }),
+                      patchRestaurantSection(restaurantRef.current, section.id, {
+                        images,
+                      }),
                     );
                   }}
                 />
@@ -775,7 +802,7 @@ export function RestaurantTemplateScreen({
                   <BasicInfoFields
                     data={data}
                     onChange={(patch) => {
-                      syncBody({ ...data, ...patch });
+                      syncBody({ ...restaurantRef.current, ...patch });
                     }}
                   />
                 ) : null}
@@ -788,14 +815,22 @@ export function RestaurantTemplateScreen({
           <Pressable
             style={styles.previewBtn}
             onPress={() => {
-              syncBody(data);
+              syncBody(restaurantRef.current);
+              if (!ensureIntroReady()) return;
               onPreview();
             }}
           >
             <Text style={styles.previewBtnText}>미리보기</Text>
           </Pressable>
           {draft.body ? (
-            <Pressable style={styles.publishBtn} onPress={onPublish}>
+            <Pressable
+              style={styles.publishBtn}
+              onPress={() => {
+                syncBody(restaurantRef.current);
+                if (!ensureIntroReady()) return;
+                onPublish();
+              }}
+            >
               <Text style={styles.publishBtnText}>WordPress 등록 →</Text>
             </Pressable>
           ) : null}

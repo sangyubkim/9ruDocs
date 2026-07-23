@@ -1,4 +1,5 @@
 import {
+  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -11,6 +12,9 @@ import type { BlogDraft, Step } from "../types";
 import {
   normalizeRestaurantData,
   restaurantToMarkdown,
+  getIntroExcerpt,
+  getIntroFeaturedImageUri,
+  validateRestaurantIntro,
 } from "../utils/restaurantTemplate";
 import { locationFromPlaceName } from "../utils/maps";
 import { MarkdownPreviewBody } from "../utils/markdownPreview";
@@ -27,16 +31,22 @@ function sortedSteps(steps: Step[]): Step[] {
 
 export function BlogPreviewScreen({ draft, onEdit, onPublish }: Props) {
   const steps = sortedSteps(draft.steps);
-  const featured = steps.find((s) => s.imageUri)?.imageUri ?? null;
+  const restaurant =
+    draft.template === "restaurant" && draft.restaurant
+      ? normalizeRestaurantData(draft.restaurant)
+      : null;
+  const featured =
+    (restaurant ? getIntroFeaturedImageUri(restaurant) : null) ??
+    steps.find((s) => s.imageUri)?.imageUri ??
+    null;
+  const excerptText = restaurant
+    ? getIntroExcerpt(restaurant)
+    : draft.excerpt.trim();
   const stepsWithImages = steps.filter((s) => s.imageUri);
   const stepsWithLocation = steps.filter(
     (s) => s.location?.label || s.location?.mapsUrl,
   );
 
-  const restaurant =
-    draft.template === "restaurant" && draft.restaurant
-      ? normalizeRestaurantData(draft.restaurant)
-      : null;
   const restaurantLocation =
     restaurant?.location ??
     (restaurant?.basicInfo.address.trim()
@@ -58,6 +68,17 @@ export function BlogPreviewScreen({ draft, onEdit, onPublish }: Props) {
     ? restaurantToMarkdown(restaurant)
     : draft.body;
 
+  const handlePublish = () => {
+    if (restaurant) {
+      const check = validateRestaurantIntro(restaurant);
+      if (!check.ok) {
+        Alert.alert("도입부 확인", check.message ?? "도입부를 확인해 주세요.");
+        return;
+      }
+    }
+    onPublish();
+  };
+
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={styles.content}>
       <Text style={styles.badge}>발행 미리보기</Text>
@@ -68,16 +89,22 @@ export function BlogPreviewScreen({ draft, onEdit, onPublish }: Props) {
       {featured ? (
         <View style={styles.featuredWrap}>
           <Image source={{ uri: featured }} style={styles.featured} />
-          <Text style={styles.featuredHint}>대표 이미지 (첫 단계 사진)</Text>
+          <Text style={styles.featuredHint}>
+            {restaurant ? "대표 이미지 (도입부 사진)" : "대표 이미지 (첫 단계 사진)"}
+          </Text>
         </View>
       ) : null}
 
       <Text style={styles.title}>{draft.title.trim() || "(제목 없음)"}</Text>
 
-      {draft.excerpt.trim() ? (
-        <Text style={styles.excerpt}>{draft.excerpt.trim()}</Text>
+      {excerptText ? (
+        <Text style={styles.excerpt}>{excerptText}</Text>
       ) : (
-        <Text style={styles.excerptPlaceholder}>요약이 비어 있습니다.</Text>
+        <Text style={styles.excerptPlaceholder}>
+          {restaurant
+            ? "도입부 내용이 비어 있습니다. (요약글로 사용)"
+            : "요약이 비어 있습니다."}
+        </Text>
       )}
 
       {draft.tags.length > 0 ? (
@@ -150,7 +177,7 @@ export function BlogPreviewScreen({ draft, onEdit, onPublish }: Props) {
         <Pressable style={styles.secondaryBtn} onPress={onEdit}>
           <Text style={styles.secondaryText}>편집으로</Text>
         </Pressable>
-        <Pressable style={styles.primaryBtn} onPress={onPublish}>
+        <Pressable style={styles.primaryBtn} onPress={handlePublish}>
           <Text style={styles.primaryText}>WordPress 등록</Text>
         </Pressable>
       </View>

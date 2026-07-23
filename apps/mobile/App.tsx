@@ -33,7 +33,7 @@ import {
   switchActiveDraft,
   upsertDraftInState,
 } from "./src/storage/draftStorage";
-import { restaurantToMarkdown, normalizeRestaurantData, createEmptyRestaurantData } from "./src/utils/restaurantTemplate";
+import { restaurantToMarkdown, normalizeRestaurantData, createEmptyRestaurantData, getIntroExcerpt } from "./src/utils/restaurantTemplate";
 import type { BlogDraft, DraftListState, Screen } from "./src/types";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { EditScreen } from "./src/screens/EditScreen";
@@ -157,6 +157,15 @@ function AppInner() {
           }
         : next;
     setDraftState((prev) => {
+      // 빠른 연속 입력 시 이전 저장이 늦게 도착해 최신 내용을 덮지 않도록
+      const existing = prev.drafts.find((d) => d.id === normalized.id);
+      if (
+        existing?.updatedAt &&
+        normalized.updatedAt &&
+        existing.updatedAt > normalized.updatedAt
+      ) {
+        return prev;
+      }
       const updated = upsertDraftInState(prev, normalized);
       void saveDraftState(updated);
       return updated;
@@ -253,7 +262,7 @@ function AppInner() {
         ...draft,
         title: result.title,
         body: result.body,
-        excerpt: result.excerpt,
+        excerpt: getIntroExcerpt(restaurant) || result.excerpt,
         tags: result.suggestedTags ?? [],
         restaurant,
         updatedAt: new Date().toISOString(),

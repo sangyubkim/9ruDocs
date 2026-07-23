@@ -1,3 +1,5 @@
+import { completeJson, hasLlmConfigured } from "./llm.mjs";
+
 const RATING_KEYS = ["taste", "price", "service", "cleanliness", "revisit"];
 const RATING_LABELS = {
   taste: "맛",
@@ -93,7 +95,7 @@ function fallbackGenerate(restaurant) {
   };
 }
 
-async function generateWithOpenAi(restaurant, env) {
+async function generateWithLlm(restaurant, env) {
   const context = formatRestaurantContext(restaurant);
 
   const system = `당신은 한국어 네이버 블로그 SEO 전문 작가입니다.
@@ -113,33 +115,9 @@ JSON만 반환:
   "suggestedTags": ["태그1", "태그2"]
 }`;
 
-  const res = await fetch(`${env.openaiBaseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.openaiApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: env.openaiModel,
-      temperature: 0.7,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
+  const { data: parsed } = await completeJson(env, system, user, {
+    temperature: 0.7,
   });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`OpenAI error ${res.status}: ${errText.slice(0, 200)}`);
-  }
-
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("Empty OpenAI response");
-
-  const parsed = JSON.parse(content);
   return {
     title: String(parsed.title ?? "맛집 후기"),
     body: String(parsed.body ?? ""),
@@ -165,9 +143,9 @@ export async function generateRestaurantBlog(body, env) {
     throw new Error("맛집명 또는 섹션 내용을 먼저 입력해 주세요.");
   }
 
-  if (env.openaiApiKey) {
+  if (hasLlmConfigured(env)) {
     try {
-      return await generateWithOpenAi(restaurant, env);
+      return await generateWithLlm(restaurant, env);
     } catch {
       return fallbackGenerate(restaurant);
     }
