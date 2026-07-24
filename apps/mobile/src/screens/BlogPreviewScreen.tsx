@@ -96,6 +96,9 @@ export function BlogPreviewScreen({ draft, onEdit, onPublish }: Props) {
       ) : null}
 
       <Text style={styles.title}>{draft.title.trim() || "(제목 없음)"}</Text>
+      {draft.slug?.trim() ? (
+        <Text style={styles.slug}>/{draft.slug.trim()}</Text>
+      ) : null}
 
       {excerptText ? (
         <Text style={styles.excerpt}>{excerptText}</Text>
@@ -220,6 +223,11 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#0f172a",
     lineHeight: 36,
+  },
+  slug: {
+    marginTop: 4,
+    fontSize: 13,
+    color: "#64748b",
   },
   excerpt: {
     marginTop: 10,

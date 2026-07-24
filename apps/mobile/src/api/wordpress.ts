@@ -17,6 +17,12 @@ export type PublishRequest = {
   excerpt: string;
   status?: "draft" | "publish";
   tags: string[];
+  /** WP post slug (영문 케밥) */
+  slug?: string;
+  /** 대표(첫) 미디어 대체 텍스트 */
+  imageAlt?: string;
+  /** 대표(첫) 미디어 캡션 */
+  imageCaption?: string;
   images?: PublishImage[];
   seo?: {
     metaDescription?: string;

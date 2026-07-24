@@ -87,6 +87,14 @@ export type BlogDraft = {
   body: string;
   excerpt: string;
   tags: string[];
+  /** WP 포스트 슬러그 (영문 케밥) — AI 채움 */
+  slug: string;
+  /** 대표 이미지용 영문 프롬프트(참고용). 실제 대표 이미지는 앱 사진 사용 */
+  imagePrompt: string;
+  /** 대표 이미지 대체 텍스트 */
+  imageAlt: string;
+  /** 대표 이미지 캡션 */
+  imageCaption: string;
   /** friendly | professional */
   tone?: "friendly" | "professional";
   ai?: AiWritingOptions;

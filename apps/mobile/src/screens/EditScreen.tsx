@@ -145,7 +145,23 @@ export function EditScreen({
         />
 
         <LabeledInput
-          label="요약 (SEO·발췌)"
+          label="슬러그 (영문 케밥)"
+          value={draft.slug}
+          onChangeText={(slug) =>
+            patch({
+              slug: slug
+                .toLowerCase()
+                .replace(/[^a-z0-9-]/g, "-")
+                .replace(/-+/g, "-"),
+            })
+          }
+          onFocus={() => {
+            bodyFocusedRef.current = false;
+          }}
+        />
+
+        <LabeledInput
+          label="요약 (SEO·발췌, 120~160자 권장)"
           value={draft.excerpt}
           onChangeText={(excerpt) => patch({ excerpt })}
           multiline
@@ -167,6 +183,35 @@ export function EditScreen({
                 .filter(Boolean),
             })
           }
+          onFocus={() => {
+            bodyFocusedRef.current = false;
+          }}
+        />
+
+        <LabeledInput
+          label="이미지 프롬프트 (참고용·영문)"
+          value={draft.imagePrompt}
+          onChangeText={(imagePrompt) => patch({ imagePrompt })}
+          multiline
+          minHeight={64}
+          onFocus={() => {
+            bodyFocusedRef.current = false;
+          }}
+        />
+
+        <LabeledInput
+          label="대체 텍스트 (대표 이미지)"
+          value={draft.imageAlt}
+          onChangeText={(imageAlt) => patch({ imageAlt })}
+          onFocus={() => {
+            bodyFocusedRef.current = false;
+          }}
+        />
+
+        <LabeledInput
+          label="캡션 (대표 이미지)"
+          value={draft.imageCaption}
+          onChangeText={(imageCaption) => patch({ imageCaption })}
           onFocus={() => {
             bodyFocusedRef.current = false;
           }}

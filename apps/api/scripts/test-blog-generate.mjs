@@ -67,6 +67,10 @@ assert(
   "fallback google or label",
 );
 assert(result.suggestedTags.length > 0, "fallback tags");
+assert(String(result.slug ?? "").length > 0, "fallback slug");
+assert(String(result.imageAlt ?? "").length > 0, "fallback imageAlt");
+assert(String(result.imageCaption ?? "").length > 0, "fallback imageCaption");
+assert(String(result.imagePrompt ?? "").length > 0, "fallback imagePrompt");
 
 if (failed > 0) {
   console.error(`\n${failed} test(s) failed`);

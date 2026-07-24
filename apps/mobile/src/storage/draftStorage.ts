@@ -29,6 +29,10 @@ function normalizeDraft(draft: BlogDraft): BlogDraft {
   return {
     ...draft,
     template,
+    slug: draft.slug ?? "",
+    imagePrompt: draft.imagePrompt ?? "",
+    imageAlt: draft.imageAlt ?? "",
+    imageCaption: draft.imageCaption ?? "",
     restaurant:
       template === "restaurant"
         ? normalizeRestaurantData(draft.restaurant ?? createEmptyRestaurantData())
@@ -131,6 +135,10 @@ export function createEmptyDraft(template: BlogDraft["template"] = "restaurant")
     body: "",
     excerpt: "",
     tags: [],
+    slug: "",
+    imagePrompt: "",
+    imageAlt: "",
+    imageCaption: "",
     tone: "friendly",
     ai: {},
     createdAt: now,

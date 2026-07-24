@@ -217,6 +217,10 @@ function AppInner() {
         body: result.body,
         excerpt: result.excerpt,
         tags: result.suggestedTags ?? [],
+        slug: result.slug ?? "",
+        imagePrompt: result.imagePrompt ?? "",
+        imageAlt: result.imageAlt ?? "",
+        imageCaption: result.imageCaption ?? "",
         updatedAt: new Date().toISOString(),
       };
       await updateDraft(next);
@@ -264,6 +268,10 @@ function AppInner() {
         body: result.body,
         excerpt: getIntroExcerpt(restaurant) || result.excerpt,
         tags: result.suggestedTags ?? [],
+        slug: result.slug ?? "",
+        imagePrompt: result.imagePrompt ?? "",
+        imageAlt: result.imageAlt ?? "",
+        imageCaption: result.imageCaption ?? "",
         restaurant,
         updatedAt: new Date().toISOString(),
       };

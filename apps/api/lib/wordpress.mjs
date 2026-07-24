@@ -309,6 +309,15 @@ export async function publishToWordPress(body, env) {
   const tagNames = Array.isArray(body?.tags) ? body.tags.map(String) : [];
   const images = Array.isArray(body?.images) ? body.images : [];
   const seo = body?.seo ?? {};
+  const slug = String(body?.slug ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
+  const imageAlt = String(body?.imageAlt ?? "").trim();
+  const imageCaption = String(body?.imageCaption ?? "").trim();
 
   const mediaIds = [];
   const mediaUrls = [];
@@ -318,6 +327,22 @@ export async function publishToWordPress(body, env) {
     const media = await uploadMedia(siteUrl, username, appPassword, img);
     if (media?.id) mediaIds.push(media.id);
     if (media?.source_url) mediaUrls.push(media.source_url);
+  }
+
+  // 대표(첫) 미디어에 alt / caption 반영
+  if (mediaIds[0] && (imageAlt || imageCaption)) {
+    try {
+      const mediaPatch = {};
+      if (imageAlt) mediaPatch.alt_text = imageAlt;
+      if (imageCaption) mediaPatch.caption = imageCaption;
+      await wpFetch(siteUrl, username, appPassword, `/media/${mediaIds[0]}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(mediaPatch),
+      });
+    } catch (e) {
+      console.warn("Featured media alt/caption skipped:", e.message);
+    }
   }
 
   let finalContent = buildSeoContent({ content });
@@ -367,6 +392,10 @@ export async function publishToWordPress(body, env) {
     status,
     tags: tagIds,
   };
+
+  if (slug) {
+    postPayload.slug = slug;
+  }
 
   if (mediaIds[0]) {
     postPayload.featured_media = mediaIds[0];

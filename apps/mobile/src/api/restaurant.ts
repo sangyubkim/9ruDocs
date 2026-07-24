@@ -120,6 +120,10 @@ export type RestaurantGenerateResponse = {
   body: string;
   excerpt: string;
   suggestedTags: string[];
+  slug: string;
+  imagePrompt: string;
+  imageAlt: string;
+  imageCaption: string;
 };
 
 export async function generateRestaurantBlog(

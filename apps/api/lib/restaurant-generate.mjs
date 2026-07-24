@@ -1,4 +1,9 @@
 import { completeJson, hasLlmConfigured } from "./llm.mjs";
+import {
+  AI_META_JSON_FIELDS,
+  normalizeAiMeta,
+  slugifyTitle,
+} from "./ai-meta.mjs";
 
 const RATING_KEYS = ["taste", "price", "service", "cleanliness", "revisit"];
 const RATING_LABELS = {
@@ -87,12 +92,21 @@ function fallbackGenerate(restaurant) {
     "",
   );
 
-  return {
-    title: region ? `${region} ${title}` : title,
+  const fullTitle = region ? `${region} ${title}` : title;
+  return normalizeAiMeta({
+    title: fullTitle,
     body: bodyParts.join("\n").trim(),
-    excerpt: `${region} ${title} 방문 후기`.trim(),
-    suggestedTags: [region, title, "맛집", restaurant?.mainMenu].filter(Boolean),
-  };
+    excerpt: `${region} ${title} 방문 후기`.trim().slice(0, 160),
+    suggestedTags: [region, title, "맛집", restaurant?.mainMenu]
+      .map((t) => String(t ?? "").trim())
+      .filter(Boolean)
+      .slice(0, 5),
+    slug: slugifyTitle(fullTitle),
+    imagePrompt:
+      "A warm 16:9 editorial photo of a restaurant dining table with dishes, soft natural light, no text or logo",
+    imageAlt: `${fullTitle} 대표 이미지`,
+    imageCaption: fullTitle,
+  });
 }
 
 async function generateWithLlm(restaurant, env) {
@@ -111,21 +125,15 @@ JSON만 반환:
 {
   "title": "블로그 제목",
   "body": "Markdown 본문 (h1~h3, 목록, 별점 포함)",
-  "excerpt": "2~3문장 SEO 요약",
-  "suggestedTags": ["태그1", "태그2"]
-}`;
+  ${AI_META_JSON_FIELDS}
+}
+슬러그는 영문 케밥케이스 1개, 태그는 5개 전후, 요약은 120~160자로 작성하세요.
+imagePrompt는 영문(텍스트/로고 없음). 대표 이미지는 앱에서 사용자 사진을 쓰므로 이미지 경로는 만들지 마세요.`;
 
   const { data: parsed } = await completeJson(env, system, user, {
     temperature: 0.7,
   });
-  return {
-    title: String(parsed.title ?? "맛집 후기"),
-    body: String(parsed.body ?? ""),
-    excerpt: String(parsed.excerpt ?? ""),
-    suggestedTags: Array.isArray(parsed.suggestedTags)
-      ? parsed.suggestedTags.map(String)
-      : [],
-  };
+  return normalizeAiMeta(parsed, "맛집 후기");
 }
 
 export async function generateRestaurantBlog(body, env) {

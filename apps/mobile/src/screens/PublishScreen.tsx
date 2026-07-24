@@ -117,6 +117,9 @@ export function PublishScreen({ draft, onBack, onOpenSettings }: Props) {
         excerpt,
         status: asDraft ? "draft" : "publish",
         tags: draft.tags,
+        slug: draft.slug?.trim() || undefined,
+        imageAlt: draft.imageAlt?.trim() || undefined,
+        imageCaption: draft.imageCaption?.trim() || undefined,
         images,
         seo: {
           metaDescription: excerpt,
@@ -169,6 +172,9 @@ export function PublishScreen({ draft, onBack, onOpenSettings }: Props) {
 
       <View style={styles.summary}>
         <Text style={styles.summaryLine}>제목: {draft.title || "(없음)"}</Text>
+        <Text style={styles.summaryLine}>
+          슬러그: {draft.slug?.trim() || "(자동)"}
+        </Text>
         <Text style={styles.summaryLine}>
           태그: {draft.tags.join(", ") || "(없음)"}
         </Text>

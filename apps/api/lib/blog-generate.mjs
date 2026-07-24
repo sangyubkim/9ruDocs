@@ -1,4 +1,9 @@
 import { completeJson, hasLlmConfigured } from "./llm.mjs";
+import {
+  AI_META_JSON_FIELDS,
+  normalizeAiMeta,
+  slugifyTitle,
+} from "./ai-meta.mjs";
 
 /** Google Maps URL (API 키 불필요) */
 export function buildGoogleSearchUrl(query) {
@@ -155,21 +160,15 @@ JSON만 반환하세요:
 {
   "title": "제목",
   "body": "Markdown 본문",
-  "excerpt": "2~3문장 요약",
-  "suggestedTags": ["태그1", "태그2"]
-}`;
+  ${AI_META_JSON_FIELDS}
+}
+슬러그는 영문 케밥케이스 1개, 태그는 5개 전후, 요약은 120~160자로 작성하세요.
+imagePrompt는 영문(텍스트/로고 없음). 대표 이미지는 앱에서 사용자 사진을 쓰므로 이미지 경로는 만들지 마세요.`;
 
   const { data: parsed } = await completeJson(env, system, user, {
     temperature: 0.7,
   });
-  return {
-    title: String(parsed.title ?? "제목 없음"),
-    body: String(parsed.body ?? ""),
-    excerpt: String(parsed.excerpt ?? ""),
-    suggestedTags: Array.isArray(parsed.suggestedTags)
-      ? parsed.suggestedTags.map(String)
-      : [],
-  };
+  return normalizeAiMeta(parsed);
 }
 
 function generateFallback(steps, ctx) {
@@ -198,10 +197,15 @@ function generateFallback(steps, ctx) {
     .filter(Boolean)
     .slice(0, 5);
 
-  return {
+  return normalizeAiMeta({
     title,
     body,
     excerpt,
     suggestedTags: tags.length ? tags : ["일상", "기록"],
-  };
+    slug: slugifyTitle(title),
+    imagePrompt:
+      "A clean 16:9 editorial photo of a modern workspace desk with soft natural light, no text or logo",
+    imageAlt: `${title} 대표 이미지`,
+    imageCaption: title,
+  });
 }
